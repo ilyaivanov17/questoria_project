@@ -1,7 +1,5 @@
 import Link from 'next/link';
 
-const apiHealthUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-
 const foundations = [
   {
     number: '01',
@@ -44,14 +42,9 @@ export default function HomePage() {
             настоящее открытие.
           </p>
           <div className="hero-actions">
-            <a
-              className="button button-primary"
-              href={apiHealthUrl + '/api/health'}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Проверить API <span aria-hidden="true">↗</span>
-            </a>
+            <Link className="button button-primary" href="/quests">
+              Выбрать квест <span aria-hidden="true">→</span>
+            </Link>
             <a
               className="button button-secondary"
               href="https://github.com/ilyaivanov17/questoria_project/tree/main/prototype"
@@ -61,7 +54,7 @@ export default function HomePage() {
               Посмотреть прототип
             </a>
           </div>
-          <p className="hero-footnote">Сейчас создаём технический фундамент первого MVP.</p>
+          <p className="hero-footnote">Первый интерактивный квест уже доступен в каталоге.</p>
         </div>
 
         <div className="hero-art" aria-label="Иллюстрация игровой карты" role="img">
