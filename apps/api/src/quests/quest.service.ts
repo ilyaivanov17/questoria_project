@@ -1,9 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
-  TooManyRequestsException,
 } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -287,7 +288,7 @@ export class QuestService {
       where: { profileId, questRunId: runId, puzzleId },
     });
     if (attemptsMade >= puzzle.maxAttempts) {
-      throw new TooManyRequestsException('No attempts remain for this puzzle.');
+      throw new HttpException('No attempts remain for this puzzle.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const isCorrect = optionId === solution.correctOptionId;
