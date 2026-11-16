@@ -61,7 +61,9 @@ export function PlayClient({ runId }: { runId: string }) {
   }, [router, runId]);
 
   useEffect(() => {
-    void loadRun();
+    queueMicrotask(() => {
+      void loadRun();
+    });
   }, [loadRun]);
 
   async function submitAnswer() {
