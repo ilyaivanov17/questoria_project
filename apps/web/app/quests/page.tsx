@@ -88,7 +88,7 @@ export default async function QuestsPage() {
           <span className="empty-icon">✧</span>
           <h2>Квесты скоро появятся</h2>
           <p>Сервер каталога пока недоступен или контент ещё не загружен. Попробуй обновить страницу.</p>
-          <Link className="text-link" href="/prototype">Посмотреть прототип →</Link>
+          <a className="text-link" href="https://github.com/ilyaivanov17/questoria_project/blob/main/prototype/index.html">Посмотреть прототип →</a>
         </div>
       )}
     </main>
