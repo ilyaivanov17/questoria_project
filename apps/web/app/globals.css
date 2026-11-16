@@ -296,3 +296,279 @@ a { color: inherit; text-decoration: none; }
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Catalog, account and gameplay screens */
+.content-page {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-bottom: 72px;
+}
+
+.simple-nav, .game-actions, .quest-meta, .result-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.simple-nav a, .simple-nav-link, .auth-switch a, .text-link {
+  color: var(--purple);
+  font-weight: 700;
+}
+
+.nav-cta {
+  padding: 10px 14px;
+  border-radius: 11px;
+  background: #efedff;
+}
+
+.content-heading {
+  max-width: 670px;
+  padding: 64px 0 34px;
+}
+
+.content-heading h1, .quest-detail h1, .auth-card h1, .game-card h1, .result-card h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -2px;
+}
+
+.content-heading > p:last-child, .muted-copy, .quest-lead {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.quest-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.quest-card, .preview-card, .auth-card, .game-card, .result-card, .empty-state {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 14px 36px #252b4210;
+}
+
+.quest-card {
+  display: flex;
+  min-height: 290px;
+  flex-direction: column;
+  padding: 24px;
+}
+
+.quest-card-top, .quest-meta, .puzzle-counter, .game-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.quest-symbol, .preview-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 14px;
+  background: #f1efff;
+  color: var(--purple);
+  font-size: 24px;
+}
+
+.quest-category, .preview-label, .map-card-label, .puzzle-counter, .game-progress {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+}
+
+.quest-card h2 {
+  margin: 22px 0 10px;
+  font-size: 21px;
+}
+
+.quest-card p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.quest-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quest-meta span {
+  padding: 6px 9px;
+  border-radius: 99px;
+  background: #f5f6fa;
+}
+
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.empty-state {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 42px;
+  text-align: center;
+}
+
+.empty-state p { color: var(--muted); line-height: 1.7; }
+.empty-icon { color: var(--purple); font-size: 35px; }
+
+.breadcrumbs {
+  display: flex;
+  gap: 10px;
+  margin: 28px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.quest-detail {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: start;
+  gap: 42px;
+  padding: 46px 0 70px;
+}
+
+.quest-lead {
+  margin: 20px 0;
+  font-size: 18px;
+}
+
+.detail-meta { margin: 24px 0 34px; }
+
+.objectives h2 { font-size: 19px; }
+.objectives ul { padding-left: 20px; color: var(--muted); line-height: 1.9; }
+
+.preview-card {
+  padding: 28px;
+  background: linear-gradient(145deg, #fff, #f4f2ff);
+}
+
+.preview-icon { margin: 22px 0; width: 56px; height: 56px; font-size: 30px; }
+.preview-card h2 { font-size: 22px; line-height: 1.4; }
+.preview-options { display: grid; gap: 10px; margin-top: 22px; }
+.preview-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.option-dot { width: 10px; height: 10px; border: 1px solid #a9aabd; border-radius: 50%; }
+.small-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.start-action { margin-top: 28px; }
+
+.auth-page, .play-page {
+  min-height: 100vh;
+  padding: 30px 24px 60px;
+  background: radial-gradient(circle at 50% 10%, #eeecff, #f7f8fc 45%);
+}
+
+.auth-page { display: flex; flex-direction: column; align-items: center; }
+.auth-brand { margin-bottom: 30px; }
+.auth-card { width: min(460px, 100%); padding: 34px; }
+.auth-card h1 { font-size: 34px; }
+.auth-form { display: grid; gap: 17px; margin-top: 26px; }
+.field { display: grid; gap: 8px; font-size: 13px; font-weight: 700; }
+.field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid #dfe1eb;
+  border-radius: 12px;
+  background: #fbfbfe;
+  color: var(--ink);
+  font: inherit;
+}
+.field input:focus { outline: 2px solid #aaa0f1; border-color: transparent; }
+.submit-button { width: 100%; margin-top: 4px; cursor: pointer; }
+.submit-button:disabled, .button:disabled { cursor: wait; opacity: 0.65; }
+.form-error { color: #a92d43; font-size: 13px; line-height: 1.5; }
+.auth-switch { margin: 22px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+.back-link { margin-top: 22px; color: var(--muted); font-size: 13px; }
+
+.play-page { display: flex; flex-direction: column; align-items: center; }
+.game-topbar {
+  width: min(920px, 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 54px;
+}
+.game-brand { margin-bottom: 28px; }
+.game-progress { width: min(760px, 100%); margin-bottom: 14px; }
+.game-card { width: min(760px, 100%); padding: 34px; }
+.game-card h1 { font-size: 34px; }
+.game-intro { color: var(--muted); line-height: 1.7; }
+.puzzle-panel {
+  margin-top: 28px;
+  padding: 26px;
+  border-radius: 18px;
+  background: #f8f8fc;
+}
+.puzzle-counter { font-size: 10px; letter-spacing: 0.8px; }
+.puzzle-panel h2 { margin: 24px 0; font-size: 22px; line-height: 1.45; }
+.answer-options { display: grid; gap: 11px; }
+.answer-option {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.answer-option.selected { border-color: var(--purple); background: #f2f0ff; }
+.radio-indicator { width: 16px; height: 16px; border: 1px solid #a9aabd; border-radius: 50%; }
+.answer-option.selected .radio-indicator { border: 5px solid var(--purple); }
+.feedback, .hint-panel { margin-top: 17px; padding: 14px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; }
+.feedback-success { border: 1px solid #b9e2d2; background: #edf9f4; color: #216c50; }
+.feedback-error { border: 1px solid #f0d7ba; background: #fff8ec; color: #83541e; }
+.hint-panel { background: #f0efff; color: #464077; }
+.hint-panel p { margin-bottom: 0; }
+.game-actions { justify-content: space-between; flex-wrap: wrap; margin-top: 22px; }
+.result-card { width: min(560px, 100%); padding: 44px; text-align: center; }
+.result-symbol { color: var(--purple); font-size: 56px; }
+.result-card h1 { font-size: 38px; }
+.result-stats { justify-content: center; gap: 38px; margin: 30px 0; }
+.result-stats div { display: grid; gap: 4px; }
+.result-stats strong { font-size: 28px; }
+.result-stats span { color: var(--muted); font-size: 12px; }
+.result-back { justify-content: center; display: flex; }
+
+@media (max-width: 800px) {
+  .quest-grid { grid-template-columns: repeat(2, 1fr); }
+  .quest-detail { grid-template-columns: 1fr; gap: 24px; }
+}
+@media (max-width: 600px) {
+  .content-page { width: min(100% - 32px, 560px); }
+  .content-heading { padding: 44px 0 24px; }
+  .quest-grid { grid-template-columns: 1fr; }
+  .auth-page, .play-page { padding: 20px 16px 42px; }
+  .auth-card, .game-card, .result-card { padding: 24px; }
+  .puzzle-panel { padding: 18px; }
+  .game-topbar { margin-bottom: 34px; }
+  .game-actions { align-items: stretch; flex-direction: column; }
+  .game-actions .button { width: 100%; }
+  .puzzle-counter { align-items: flex-start; flex-direction: column; }
+}
