@@ -14,6 +14,23 @@ jobs:
   validate:
     name: Validate monorepo
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: questoria
+          POSTGRES_USER: questoria
+          POSTGRES_PASSWORD: questoria_local_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U questoria -d questoria"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
+      WEB_ORIGIN: http://localhost:3000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,8 +55,12 @@ jobs:
 
       - name: Validate Prisma schema
         run: pnpm db:generate
-        env:
-          DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
+
+      - name: Apply database migrations
+        run: pnpm db:deploy
+
+      - name: Seed the demo quest
+        run: pnpm db:seed
 
       - name: Typecheck
         run: pnpm typecheck
