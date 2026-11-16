@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 type AuthMode = 'login' | 'register';
 
@@ -13,7 +13,6 @@ const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -43,7 +42,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         throw new Error(data.message ?? data.error?.message ?? 'Не удалось выполнить запрос.');
       }
 
-      const next = searchParams.get('next');
+      const next = new URLSearchParams(window.location.search).get('next');
       router.push(next?.startsWith('/') ? next : '/quests');
       router.refresh();
     } catch (submitError) {
