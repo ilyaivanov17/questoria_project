@@ -27,7 +27,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       # Replace with --frozen-lockfile after the first pnpm install
       # and commit of pnpm-lock.yaml.
