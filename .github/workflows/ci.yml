@@ -36,6 +36,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Validate Prisma schema
+        run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
+
       - name: Typecheck
         run: pnpm typecheck
 
