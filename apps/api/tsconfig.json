@@ -18,7 +18,8 @@
     "strictNullChecks": true,
     "types": [
       "node"
-    ]
+    ],
+    "rootDir": "./src"
   },
   "include": [
     "src/**/*.ts"
