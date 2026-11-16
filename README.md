@@ -37,6 +37,8 @@ pnpm install
 cp .env.example .env
 docker compose -f infra/docker/docker-compose.yml up -d postgres
 pnpm db:generate
+pnpm db:deploy
+pnpm db:seed
 pnpm dev
 ```
 
@@ -54,11 +56,17 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm db:generate
+pnpm db:deploy
+pnpm db:seed
 pnpm db:migrate
 pnpm db:studio
 ```
 
-После первого `pnpm install` необходимо сохранить созданный `pnpm-lock.yaml` в Git. До появления lockfile CI использует установку без frozen-lockfile; после его добавления CI нужно переключить на `--frozen-lockfile`.
+После первого `pnpm install` необходимо сохранить созданный `pnpm-lock.yaml` в Git. Пока lockfile не добавлен, CI устанавливает зависимости без frozen-lockfile.
+
+## Первый вертикальный квест
+
+В базе есть seed-квест «Тайна пропавшего числа». После запуска frontend, API и PostgreSQL откройте `/quests`, зарегистрируйтесь, откройте миссию и пройдите её. API сохраняет сессию, попытки и статус прохождения в PostgreSQL.
 
 ## Прототип
 
