@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@12.17.0",
-  "engines": { "node": ">=22.12 <23", "pnpm": ">=12 <13" },
+  "engines": {
+    "node": ">=22.12 <23",
+    "pnpm": ">=12 <13"
+  },
   "scripts": {
     "dev": "pnpm --parallel --filter @questoria/web --filter @questoria/api dev",
     "build": "pnpm --recursive --if-present build",
@@ -14,7 +17,8 @@
     "db:generate": "prisma generate --config prisma7.config.ts",
     "db:migrate": "prisma migrate dev --config prisma7.config.ts",
     "db:deploy": "prisma migrate deploy --config prisma7.config.ts",
-    "db:studio": "prisma studio --config prisma7.config.ts"
+    "db:studio": "prisma studio --config prisma7.config.ts",
+    "db:seed": "pnpm --filter @questoria/api seed"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
