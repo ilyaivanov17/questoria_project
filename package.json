@@ -18,7 +18,8 @@
     "db:migrate": "prisma migrate dev --config prisma7.config.ts",
     "db:deploy": "prisma migrate deploy --config prisma7.config.ts",
     "db:studio": "prisma studio --config prisma7.config.ts",
-    "db:seed": "pnpm --filter @questoria/api seed"
+    "db:seed": "pnpm --filter @questoria/api seed",
+    "test": "pnpm --recursive --if-present test"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
