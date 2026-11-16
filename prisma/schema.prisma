@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../apps/api/src/generated/prisma"
+  moduleFormat = "esm"
 }
 
 datasource db {
@@ -13,30 +14,65 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestVersionStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestRunStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   emailNormalized String     @unique @map("email_normalized")
-  passwordHash    String?    @map("password_hash")
-  status          UserStatus @default(PENDING)
+  passwordHash    String     @map("password_hash")
+  status          UserStatus @default(ACTIVE)
   emailVerifiedAt DateTime?  @map("email_verified_at")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
   profile         Profile?
   roles           UserRole[]
+  sessions        Session[]
 
   @@map("users")
 }
 
 model Profile {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @unique @db.Uuid @map("user_id")
-  nickname  String?
-  locale    String   @default("ru")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @unique @db.Uuid @map("user_id")
+  nickname       String?
+  ageBand        String?          @map("age_band")
+  locale         String           @default("ru")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  questRuns      QuestRun[]
+  puzzleAttempts PuzzleAttempt[]
 
   @@map("profiles")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
 }
 
 model Role {
@@ -56,4 +92,140 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+}
+
+model Category {
+  id          String        @id @default(uuid()) @db.Uuid
+  slug        String
+  locale      String        @default("ru")
+  title       String
+  description String
+  status      ContentStatus @default(PUBLISHED)
+  sortOrder   Int           @default(0) @map("sort_order")
+  quests      Quest[]
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@unique([locale, slug])
+  @@index([status, sortOrder])
+  @@map("categories")
+}
+
+model Quest {
+  id        String        @id @default(uuid()) @db.Uuid
+  categoryId String       @db.Uuid @map("category_id")
+  slug      String        @unique
+  status    ContentStatus @default(DRAFT)
+  category  Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  versions  QuestVersion[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([categoryId, status])
+  @@map("quests")
+}
+
+model QuestVersion {
+  id          String             @id @default(uuid()) @db.Uuid
+  questId     String             @db.Uuid @map("quest_id")
+  versionNo   Int                @map("version_no")
+  title       String
+  summary     String
+  objectives  Json
+  ageMin      Int                @map("age_min")
+  ageMax      Int                @map("age_max")
+  difficulty  String
+  durationMin Int                @map("duration_min")
+  locale      String             @default("ru")
+  seo         Json?
+  status      QuestVersionStatus @default(DRAFT)
+  publishedAt DateTime?          @map("published_at")
+  quest       Quest              @relation(fields: [questId], references: [id], onDelete: Restrict)
+  levels      Level[]
+  runs        QuestRun[]
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  @@unique([questId, versionNo])
+  @@index([questId, status])
+  @@map("quest_versions")
+}
+
+model Level {
+  id             String      @id @default(uuid()) @db.Uuid
+  questVersionId String      @db.Uuid @map("quest_version_id")
+  orderNo        Int         @map("order_no")
+  title          String
+  intro          String
+  questVersion   QuestVersion @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
+  puzzles        Puzzle[]
+
+  @@unique([questVersionId, orderNo])
+  @@map("levels")
+}
+
+model Puzzle {
+  id                String          @id @default(uuid()) @db.Uuid
+  levelId           String          @db.Uuid @map("level_id")
+  orderNo           Int             @map("order_no")
+  type              String
+  schemaVersion     Int             @default(1) @map("schema_version")
+  publicPayload     Json            @map("public_payload")
+  solutionPrivate   Json            @map("solution_private")
+  maxAttempts       Int             @default(3) @map("max_attempts")
+  maxScore          Int             @default(10) @map("max_score")
+  level             Level           @relation(fields: [levelId], references: [id], onDelete: Restrict)
+  hints             Hint[]
+  attempts          PuzzleAttempt[]
+
+  @@unique([levelId, orderNo])
+  @@map("puzzles")
+}
+
+model Hint {
+  id       String @id @default(uuid()) @db.Uuid
+  puzzleId String @db.Uuid @map("puzzle_id")
+  orderNo  Int    @map("order_no")
+  body     String
+  puzzle   Puzzle @relation(fields: [puzzleId], references: [id], onDelete: Restrict)
+
+  @@unique([puzzleId, orderNo])
+  @@map("hints")
+}
+
+model QuestRun {
+  id             String         @id @default(uuid()) @db.Uuid
+  profileId      String         @db.Uuid @map("profile_id")
+  questVersionId String         @db.Uuid @map("quest_version_id")
+  status          QuestRunStatus @default(IN_PROGRESS)
+  startedAt       DateTime       @default(now()) @map("started_at")
+  completedAt     DateTime?      @map("completed_at")
+  lastActivityAt  DateTime       @default(now()) @map("last_activity_at")
+  profile         Profile        @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  questVersion    QuestVersion   @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
+  attempts        PuzzleAttempt[]
+
+  @@index([profileId, status])
+  @@index([questVersionId])
+  @@map("quest_runs")
+}
+
+model PuzzleAttempt {
+  id                String   @id @default(uuid()) @db.Uuid
+  profileId         String   @db.Uuid @map("profile_id")
+  questRunId        String   @db.Uuid @map("quest_run_id")
+  puzzleId          String   @db.Uuid @map("puzzle_id")
+  attemptKey        String   @map("attempt_key")
+  answer            Json
+  isCorrect         Boolean  @map("is_correct")
+  score             Int      @default(0)
+  feedback          String
+  attemptsRemaining Int      @map("attempts_remaining")
+  createdAt         DateTime @default(now()) @map("created_at")
+  profile           Profile  @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  questRun          QuestRun @relation(fields: [questRunId], references: [id], onDelete: Restrict)
+  puzzle            Puzzle   @relation(fields: [puzzleId], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, attemptKey])
+  @@index([questRunId, puzzleId, createdAt])
+  @@map("puzzle_attempts")
 }
