@@ -1,0 +1,28 @@
+{
+  "name": "questoria",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.17.0",
+  "engines": { "node": ">=22.12 <23", "pnpm": ">=12 <13" },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @questoria/web --filter @questoria/api dev",
+    "build": "pnpm --recursive --if-present build",
+    "lint": "eslint apps packages",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,json}\" \"prisma/**/*\" \"docs/ADR/**/*.md\" README.md package.json pnpm-workspace.yaml",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,json}\" \"prisma/**/*\" \"docs/ADR/**/*.md\" README.md package.json pnpm-workspace.yaml",
+    "db:generate": "prisma generate --config prisma7.config.ts",
+    "db:migrate": "prisma migrate dev --config prisma7.config.ts",
+    "db:deploy": "prisma migrate deploy --config prisma7.config.ts",
+    "db:studio": "prisma studio --config prisma7.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "dotenv": "^17.2.0",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "16.4.0",
+    "prettier": "^3.6.2",
+    "prisma": "^7.10.1",
+    "typescript": "^6.0.0"
+  }
+}
