@@ -6,4 +6,5 @@ packages:
 # Prisma requires its engine and CLI install scripts to prepare the local toolchain.
 allowBuilds:
   "@prisma/engines": true
+  "esbuild": true
   "prisma": true
