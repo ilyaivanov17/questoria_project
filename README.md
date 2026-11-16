@@ -83,4 +83,19 @@ pnpm db:studio
 5. Для каждой функции добавляются acceptance criteria, тесты и обработка ошибок.
 6. Изменения вносятся через feature-ветку и Pull Request.
 
-Текущий этап: **Sprint 0 — технический фундамент**. См. [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md) и [ADR-010](docs/ADR/010-runtime-and-toolchain.md).
+Текущий этап: **Sprint 1 — первый вертикальный квест**. Реализованы регистрация и вход, публичный каталог, одна миссия с типом `single_choice`, сохранение прохождения в PostgreSQL, серверная проверка ответа и экран результата.
+
+## Проверки качества
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+CI additionally applies database migrations, seeds the demo quest, starts the API and runs `scripts/smoke.mjs`. Smoke test verifies registration, session cookie handling, quest persistence, answer validation, idempotent retries, result recovery after login and ownership isolation.
+
+**Ограничение:** это development MVP, не публичный production-релиз. Пока нет подтверждения email, восстановления пароля, CMS, XP/coin ledger, административных ролей и законченных юридических/privacy-процессов для беты. До публичного запуска необходимо закрыть эти требования и провести security/privacy review.
+
+Архитектурные решения: [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md) и [ADR-010](docs/ADR/010-runtime-and-toolchain.md).
