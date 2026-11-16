@@ -70,3 +70,18 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Start API for smoke test
+        run: |
+          pnpm --filter @questoria/api start > /tmp/questoria-api.log 2>&1 &
+          echo "$!" > /tmp/questoria-api.pid
+
+      - name: End-to-end smoke test
+        run: node scripts/smoke.mjs
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/questoria-api.pid ]; then
+            kill "$(cat /tmp/questoria-api.pid)" || true
+          fi
