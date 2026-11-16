@@ -364,13 +364,14 @@ export class QuestService {
 
   private attemptResponse(attempt: {
     id: string;
+    attemptKey: string;
     isCorrect: boolean;
     score: number;
     feedback: string;
     attemptsRemaining: number;
   }): object {
     return {
-      attemptId: attempt.id,
+      attemptId: attempt.attemptKey,
       result: attempt.isCorrect ? 'correct' : 'incorrect',
       scoreAwarded: attempt.score,
       attemptsRemaining: attempt.attemptsRemaining,
