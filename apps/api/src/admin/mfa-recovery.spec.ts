@@ -24,7 +24,7 @@ test('generates ten unique high-entropy, printable one-time recovery codes', () 
 test('normalizes letter case and separators before hashing', () => {
   const code = 'A1B2C3-D4E5F6-123456-ABCDEF';
 
-  assert.equal(normalizeMfaRecoveryCode(' a1b2c3 d4e5f6-123456-abcdef '), code);
+  assert.equal(normalizeMfaRecoveryCode(' a1b2c3 d4e5f6-123456-abcdef '), 'A1B2C3D4E5F6123456ABCDEF');
   assert.equal(
     hashMfaRecoveryCode(code),
     hashMfaRecoveryCode('a1b2c3 d4e5f6 123456 abcdef'),
