@@ -32,6 +32,7 @@ jobs:
       DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
       WEB_ORIGIN: http://localhost:3000
       EMAIL_PROVIDER: console
+      MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     steps:
       - name: Checkout
         uses: actions/checkout@v4
