@@ -401,6 +401,7 @@ export class QuestService {
 
             const levelXp = await tx.walletLedger.createMany({
               data: [{
+                id: randomUUID(),
                 profileId,
                 currency: 'XP',
                 amount: LEVEL_REWARD.xp,
@@ -413,6 +414,7 @@ export class QuestService {
             });
             const levelCoins = await tx.walletLedger.createMany({
               data: [{
+                id: randomUUID(),
                 profileId,
                 currency: 'COIN',
                 amount: LEVEL_REWARD.coins,
@@ -461,6 +463,7 @@ export class QuestService {
             if (questFirstCompletion) {
               const questXp = await tx.walletLedger.createMany({
                 data: [{
+                  id: randomUUID(),
                   profileId,
                   currency: 'XP',
                   amount: QUEST_REWARD.xp,
@@ -473,6 +476,7 @@ export class QuestService {
               });
               const questCoins = await tx.walletLedger.createMany({
                 data: [{
+                  id: randomUUID(),
                   profileId,
                   currency: 'COIN',
                   amount: QUEST_REWARD.coins,
@@ -485,6 +489,7 @@ export class QuestService {
               });
               const finalXp = await tx.walletLedger.createMany({
                 data: [{
+                  id: randomUUID(),
                   profileId,
                   currency: 'XP',
                   amount: FINAL_PUZZLE_REWARD.xp,
@@ -497,6 +502,7 @@ export class QuestService {
               });
               const finalCoins = await tx.walletLedger.createMany({
                 data: [{
+                  id: randomUUID(),
                   profileId,
                   currency: 'COIN',
                   amount: FINAL_PUZZLE_REWARD.coins,
