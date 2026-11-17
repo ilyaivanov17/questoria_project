@@ -982,3 +982,47 @@ a { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .quest-card-enhanced, .answer-option, .answer-checkbox, .xp-progress-track span, .game-progress-track span, .hint-panel, .puzzle-panel { animation: none; transition: none; }
 }
+
+
+/* Super Admin user and access management */
+.admin-section-description { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.admin-user-search { max-width: 480px; margin-bottom: 16px; }
+.admin-user-list { display: grid; gap: 12px; }
+.admin-user-card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fcfcff; }
+.admin-user-heading { display: flex; align-items: center; gap: 12px; }
+.admin-user-avatar { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 13px; background: #efedff; color: var(--purple); font-weight: 800; }
+.admin-user-identity { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.admin-user-identity strong { overflow-wrap: anywhere; font-size: 13px; }
+.admin-user-identity span { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
+.admin-user-identity small { color: var(--muted); font-size: 10px; }
+.status-active { background: #eaf7f0; color: #267653 !important; }
+.status-suspended { background: #fff0f0; color: #a13b4a !important; }
+.status-pending { background: #fff5e6; color: #986517 !important; }
+.admin-user-trust { display: flex; flex-wrap: wrap; gap: 13px; margin: 14px 0 10px 54px; font-size: 10px; }
+.admin-trust-good { color: #267653; }
+.admin-trust-muted { color: var(--muted); }
+.admin-user-roles { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 14px 54px; }
+.admin-role-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #dedaf9; border-radius: 999px; background: #f4f2ff; color: #5145b6; font-size: 10px; font-weight: 800; }
+.admin-role-chip button { display: inline-grid; width: 17px; height: 17px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #e7e3ff; color: #5145b6; font-size: 14px; cursor: pointer; }
+.admin-role-chip button:disabled { opacity: .5; cursor: wait; }
+.admin-no-role { color: var(--muted); font-size: 11px; }
+.admin-user-management { display: grid; grid-template-columns: minmax(150px,.7fr) minmax(180px,1.3fr) auto; align-items: end; gap: 11px; padding-top: 13px; border-top: 1px solid #eff0f5; }
+.admin-user-management .field { min-width: 0; }
+.admin-user-management input, .admin-user-management select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid #dfe1eb; border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; }
+.admin-user-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.button-danger { border-color: #f0d6db; background: #fff4f5; color: #a13b4a; }
+.button-danger:hover { background: #ffe9ed; }
+.admin-self-note { margin: 12px 0 0 54px; color: var(--muted); font-size: 11px; }
+.admin-users-footnote { margin: 15px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+@media (max-width: 900px) {
+  .admin-user-management { grid-template-columns: 1fr 1fr; }
+  .admin-user-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  .admin-user-card { padding: 14px; }
+  .admin-user-heading { align-items: flex-start; flex-wrap: wrap; }
+  .admin-user-heading > .admin-status { margin-left: 54px; }
+  .admin-user-trust, .admin-user-roles, .admin-self-note { margin-left: 0; }
+  .admin-user-management { grid-template-columns: 1fr; }
+  .admin-user-actions { grid-column: auto; }
+}
