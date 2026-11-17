@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { getPlayerProgression } from './progression.js';
 
 @Injectable()
 export class ProfileService {
@@ -13,12 +14,20 @@ export class ProfileService {
     });
     if (!profile) throw new NotFoundException('Profile not found.');
 
-    const [wallet, completedQuests, completedRuns, activeRuns] = await Promise.all([
+    const [wallet, completedQuests, completedRuns, activeRuns, completedLevels] = await Promise.all([
       this.getBalances(profileId),
       this.prisma.questCompletion.count({ where: { profileId } }),
       this.prisma.questRun.count({ where: { profileId, status: 'COMPLETED' } }),
       this.prisma.questRun.count({ where: { profileId, status: 'IN_PROGRESS' } }),
+      this.prisma.levelProgress.count({
+        where: { status: 'COMPLETED', questRun: { profileId } },
+      }),
     ]);
+    const progression = getPlayerProgression(wallet.xp, {
+      completedQuests,
+      completedRuns,
+      completedLevels,
+    });
 
     return {
       id: profile.id,
@@ -32,7 +41,8 @@ export class ProfileService {
         createdAt: profile.user.createdAt,
       },
       wallet,
-      stats: { completedQuests, completedRuns, activeRuns },
+      stats: { completedQuests, completedRuns, activeRuns, completedLevels },
+      progression,
     };
   }
 

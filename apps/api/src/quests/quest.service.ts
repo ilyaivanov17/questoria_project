@@ -33,6 +33,9 @@ export class QuestService {
               where: { status: 'PUBLISHED' },
               orderBy: { versionNo: 'desc' },
               take: 1,
+              include: {
+                levels: { select: { id: true, _count: { select: { puzzles: true } } } },
+              },
             },
           },
         },
@@ -54,6 +57,11 @@ export class QuestService {
           durationMin: version.durationMin,
           ageMin: version.ageMin,
           ageMax: version.ageMax,
+          coverUrl: version.coverUrl,
+          coverAlt: version.coverAlt,
+          skills: version.skills,
+          levelCount: version.levels.length,
+          puzzleCount: version.levels.reduce((sum, level) => sum + level._count.puzzles, 0),
         }];
       }),
     }));
@@ -94,6 +102,10 @@ export class QuestService {
       },
       title: version.title,
       summary: version.summary,
+      description: version.description,
+      coverUrl: version.coverUrl,
+      coverAlt: version.coverAlt,
+      skills: version.skills,
       objectives: version.objectives,
       ageMin: version.ageMin,
       ageMax: version.ageMax,
@@ -231,6 +243,11 @@ export class QuestService {
         title: run.questVersion.title,
         summary: run.questVersion.summary,
         category: run.questVersion.quest.category.title,
+      },
+      progress: {
+        completedPuzzles: completedPuzzleIds.size,
+        totalPuzzles: puzzles.length,
+        percent: puzzles.length ? Math.round((completedPuzzleIds.size / puzzles.length) * 100) : 0,
       },
       currentLevel: current ? {
         orderNo: current.level.orderNo,

@@ -7,11 +7,10 @@ type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled:
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type Quest = { id: string; slug: string; status: string; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
 type Audit = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actor: { emailNormalized: string } | null };
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 const starterLevels = [{ orderNo: 1, title: 'Первый уровень', intro: 'Сюжет и инструкция для игрока.', puzzles: [{ orderNo: 1, type: 'single_choice', maxAttempts: 3, maxScore: 10, publicPayload: { prompt: 'Что продолжает ряд 3, 6, 12?', options: [{ id: 'a', label: '18' }, { id: 'b', label: '24' }, { id: 'c', label: '30' }] }, solutionPrivate: { correctOptionId: 'b', correctFeedback: 'Каждый раз число удваивается.', incorrectFeedback: 'Сравни соседние числа.' }, hints: ['Попробуй умножить последнее число на 2.'] }] }];
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}/api/v1${path}`, {
+  const response = await fetch(`/api/v1${path}`, {
     ...init, credentials: 'include', cache: 'no-store',
     headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
@@ -226,6 +225,15 @@ export function AdminClient() {
         <label className="field"><span>Cover URL или /media/ path</span><input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} required/></label>
         <label className="field"><span>Alt обложки</span><input value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} required/></label>
         <label className="field admin-field-wide"><span>Источник лицензии</span><input value={coverLicense} onChange={(e) => setCoverLicense(e.target.value)} required/></label>
+        <div className="admin-cover-preview admin-field-wide">
+          <div className="admin-cover-preview-image">
+            {coverUrl.trim() && (coverUrl.startsWith('/') || coverUrl.startsWith('https://') || coverUrl.startsWith('http://')) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverUrl} alt={coverAlt || 'Предпросмотр обложки квеста'} />
+            ) : <span>Q</span>}
+          </div>
+          <div><p className="eyebrow">LIVE PREVIEW</p><strong>{title || 'Название будущего квеста'}</strong><p>{summary || 'Краткое описание появится здесь.'}</p><small>{coverAlt || 'Alt-текст обложки не задан'} · {coverLicense || 'Источник лицензии не указан'}</small></div>
+        </div>
         <label className="field admin-field-wide"><span>Уровни / головоломки (JSON)</span><textarea className="admin-json-editor" rows={18} spellCheck={false} value={levelsJson} onChange={(e) => setLevelsJson(e.target.value)} required/></label>
         <button className="button button-primary" disabled={busy || !categoryId} type="submit">Сохранить черновик</button>
       </form>

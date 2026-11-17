@@ -13,6 +13,7 @@ interface RunState {
   id: string;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
   quest: { slug: string; title: string; summary: string; category: string };
+  progress: { completedPuzzles: number; totalPuzzles: number; percent: number };
   currentLevel: { orderNo: number; title: string; intro: string } | null;
   currentPuzzle: {
     id: string;
@@ -37,7 +38,6 @@ interface RunState {
   } | null;
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export function PlayClient({ runId }: { runId: string }) {
   const router = useRouter();
@@ -49,13 +49,13 @@ export function PlayClient({ runId }: { runId: string }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [showHint, setShowHint] = useState(false);
+  const [visibleHints, setVisibleHints] = useState(0);
   const attemptIdRef = useRef<string | null>(null);
 
   const loadRun = useCallback(async () => {
     setError('');
     try {
-      const response = await fetch(`${apiBase}/api/v1/runs/${runId}`, {
+      const response = await fetch(`/api/v1/runs/${runId}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -77,7 +77,7 @@ export function PlayClient({ runId }: { runId: string }) {
           ? nextRun.currentPuzzle.items.map((item) => item.id)
           : [],
       );
-      setShowHint(false);
+      setVisibleHints(0);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Сервер временно недоступен.');
     } finally {
@@ -141,7 +141,7 @@ export function PlayClient({ runId }: { runId: string }) {
 
     try {
       const response = await fetch(
-        `${apiBase}/api/v1/runs/${run.id}/puzzles/${run.currentPuzzle.id}/attempts`,
+        `/api/v1/runs/${run.id}/puzzles/${run.currentPuzzle.id}/attempts`,
         {
           method: 'POST',
           credentials: 'include',
@@ -183,7 +183,7 @@ export function PlayClient({ runId }: { runId: string }) {
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`${apiBase}/api/v1/runs`, {
+      const response = await fetch(`/api/v1/runs`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -276,9 +276,10 @@ export function PlayClient({ runId }: { runId: string }) {
         </Link>
         <Link className="simple-nav-link" href="/quests">Выйти из миссии</Link>
       </header>
-      <div className="game-progress">
-        <span>МИССИЯ · {run.quest.category.toUpperCase()}</span>
-        <span>ЭТАП {run.currentLevel?.orderNo ?? 1}</span>
+      <div className="game-progress game-progress-header">
+        <div><span>МИССИЯ · {run.quest.category.toUpperCase()}</span><strong>{run.progress.percent}%</strong></div>
+        <div className="game-progress-track" role="progressbar" aria-valuenow={run.progress.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс миссии"><span style={{ width: `${run.progress.percent}%` }} /></div>
+        <small>Задание {Math.min(run.progress.completedPuzzles + 1, run.progress.totalPuzzles)} из {run.progress.totalPuzzles} · этап {run.currentLevel?.orderNo ?? 1}</small>
       </div>
       <section className="game-card">
         <p className="eyebrow">{run.quest.title}</p>
@@ -390,12 +391,15 @@ export function PlayClient({ runId }: { runId: string }) {
                 {puzzle.latestAttempt.feedback}
               </div>
             )}
-            {showHint && puzzle.hints[0] && (
-              <div className="hint-panel"><strong>Подсказка</strong><p>{puzzle.hints[0]}</p></div>
+            {visibleHints > 0 && (
+              <div className="hint-panel" aria-live="polite">
+                <strong>Подсказка {visibleHints} из {puzzle.hints.length}</strong>
+                {puzzle.hints.slice(0, visibleHints).map((hint, index) => <p key={index}>{hint}</p>)}
+              </div>
             )}
             <div className="game-actions">
-              <button className="button button-secondary" onClick={() => setShowHint((value) => !value)} type="button">
-                {showHint ? 'Скрыть подсказку' : 'Получить подсказку'}
+              <button className="button button-secondary" disabled={puzzle.hints.length === 0 || visibleHints >= puzzle.hints.length} onClick={() => setVisibleHints((value) => Math.min(value + 1, puzzle.hints.length))} type="button">
+                {visibleHints >= puzzle.hints.length ? 'Все подсказки открыты' : visibleHints ? 'Следующая подсказка' : 'Получить подсказку'}
               </button>
               <button
                 className="button button-primary"
