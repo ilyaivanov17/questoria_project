@@ -46,6 +46,12 @@ test(
           }
 
           if (questId) {
+            // Published versions are immutable; archival is the allowed
+            // lifecycle transition before deleting this temporary fixture.
+            await tx.questVersion.updateMany({
+              where: { questId, status: 'PUBLISHED' },
+              data: { status: 'ARCHIVED' },
+            });
             await tx.hint.deleteMany({
               where: { puzzle: { level: { questVersion: { questId } } } },
             });
