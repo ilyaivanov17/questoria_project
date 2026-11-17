@@ -106,13 +106,14 @@ assert.equal(replay.body.attemptId, wrongAttemptId);
 assert.equal(replay.body.attemptsRemaining, 2, 'idempotent replay must not consume another attempt');
 
 const correctAttemptId = randomUUID();
+const correctRequest = {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ attemptId: correctAttemptId, answer: { optionId: 'opt_32' } }),
+};
 const correct = await request(
   `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attemptId: correctAttemptId, answer: { optionId: 'opt_32' } }),
-  },
+  correctRequest,
   userCookie,
 );
 assert.equal(correct.response.status, 201);
@@ -123,6 +124,14 @@ assert.equal(correct.body.runCompleted, true);
 assert.equal(correct.body.rewards.xp, 40);
 assert.equal(correct.body.rewards.coins, 15);
 assert.equal(correct.body.rewards.firstCompletion, true);
+
+const correctReplay = await request(
+  `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
+  correctRequest,
+  userCookie,
+);
+assert.equal(correctReplay.response.status, 201);
+assert.deepEqual(correctReplay.body.rewards, { xp: 40, coins: 15, firstCompletion: true });
 
 const completed = await request(`/api/v1/runs/${runId}/result`, {}, userCookie);
 assert.equal(completed.response.status, 200);
