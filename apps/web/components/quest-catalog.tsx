@@ -179,7 +179,7 @@ export function QuestCatalog({ categories }: { categories: Category[] }) {
             <span>Время</span>
             <select
               value={duration}
-              onChange={(event) => setDuration(event.target.value)}
+              onChange={(event) => setDuration(event.target.value as QuestDurationFilter)}
               aria-label="Продолжительность квеста"
             >
               <option value="all">Любая</option>
