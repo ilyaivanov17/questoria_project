@@ -7,6 +7,7 @@ This is an operational gate list, not evidence that production services are alre
 | Area | Current implementation/state | Required before inviting beta users |
 | --- | --- | --- |
 | PostgreSQL | PostgreSQL 17 and migrations are available through local Docker Compose. Readiness runs `SELECT 1`. | Provision managed PostgreSQL, TLS, private network access, least-privilege credentials, automated backups and a tested restore/PITR procedure. |
+| Web/API networking | Next.js rewrites `/api/*` through the server-side `API_INTERNAL_URL` setting (defaults to localhost for local development). | Configure the API origin reachable from the deployed Next.js runtime; keep the API private where possible and do not put this internal URL in browser configuration. |
 | Email | API supports `EMAIL_PROVIDER=resend`; local development uses `console`. | Configure a Resend account, verify the sending domain, store `RESEND_API_KEY` securely, set `EMAIL_FROM`, and test verification/reset delivery and deliverability. |
 | File/media storage | Upload/storage integration is not implemented. CMS can hold editorial cover metadata but cannot upload files. | Decide whether media is needed for the closed beta. If required, implement and security-review an object-storage integration, access policy, upload limits, and deletion lifecycle before enabling uploads. |
 | Domain and HTTPS | No domain or hosting provider is supplied. Production environment validation requires HTTPS origins. | Choose canonical web origin, configure DNS and TLS certificates, set `WEB_ORIGIN` and `NEXT_PUBLIC_SITE_URL`, and verify secure cookies and email links behind the real proxy. |
@@ -24,7 +25,7 @@ The current repository does not contain a production application Dockerfile/Comp
 
 - [ ] Managed PostgreSQL is provisioned with TLS, network restrictions, tested credentials and migration permissions scoped to the release process.
 - [ ] `NODE_ENV=production`, `DATABASE_URL`, `WEB_ORIGIN`, `NEXT_PUBLIC_SITE_URL`, `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` and `MFA_ENCRYPTION_KEY` are present in the secret manager; no values are committed.
-- [ ] The same-origin proxy/reverse-proxy forwards the expected host/protocol and preserves request IDs. Confirm secure session-cookie attributes on the HTTPS deployment.
+- [ ] The same-origin proxy/reverse-proxy forwards the expected host/protocol and preserves request IDs. Set `API_INTERNAL_URL` to the API service reachable from the Next.js runtime. Confirm secure session-cookie attributes on the HTTPS deployment.
 - [ ] First Super Admin is provisioned only through the documented explicit bootstrap command after email verification. TOTP MFA is enabled and recovery codes are stored by the operator outside the application.
 - [ ] Administrative RBAC, MFA enforcement, audit trail, account suspension and session-revocation behavior are verified against a production-like staging database.
 - [ ] Secrets, database credentials, reset/verification links and session cookies are absent from application/access logs and incident reports.
