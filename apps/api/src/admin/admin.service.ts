@@ -13,6 +13,7 @@ import type { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js
 import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
 import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
+import { AUDIT_LOG_EXPORT_LIMIT, buildAuditLogWhere, type AuditLogFilters } from './audit-log.query.js';
 
 const EDITABLE_STATUSES = ['DRAFT'] as const;
 
@@ -457,14 +458,67 @@ export class AdminService {
     });
   }
 
-  async listAuditLogs(take = 50): Promise<object[]> {
-    const safeTake = Math.min(Math.max(take, 1), 100);
-    return this.prisma.adminAuditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: safeTake,
-      include: { actor: { select: { emailNormalized: true } } },
-    });
+  async listAuditLogs(
+    filters: AuditLogFilters,
+    take = 30,
+    skip = 0,
+  ): Promise<object> {
+    const where = buildAuditLogWhere(filters);
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.adminAuditLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+        skip,
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          beforeJson: true,
+          afterJson: true,
+          reason: true,
+          createdAt: true,
+          actor: { select: { emailNormalized: true } },
+        },
+      }),
+      this.prisma.adminAuditLog.count({ where }),
+    ]);
+
+    return { items, total, take, skip };
   }
+
+  async exportAuditLogs(filters: AuditLogFilters): Promise<object> {
+    const where = buildAuditLogWhere(filters);
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.adminAuditLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: AUDIT_LOG_EXPORT_LIMIT,
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          beforeJson: true,
+          afterJson: true,
+          reason: true,
+          createdAt: true,
+          actor: { select: { emailNormalized: true } },
+        },
+      }),
+      this.prisma.adminAuditLog.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      exported: items.length,
+      limit: AUDIT_LOG_EXPORT_LIMIT,
+      truncated: total > items.length,
+    };
+  }
+
 
 
   async listUsers(search?: string): Promise<object[]> {
