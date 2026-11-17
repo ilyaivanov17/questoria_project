@@ -1,0 +1,147 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { BadRequestException } from '@nestjs/common';
+import { validatePuzzleAnswer } from './puzzle-validator.js';
+
+const publicOptions = {
+  prompt: 'Выбери варианты',
+  options: [
+    { id: 'a', label: 'Первый' },
+    { id: 'b', label: 'Второй' },
+    { id: 'c', label: 'Третий' },
+  ],
+};
+const feedback = {
+  correctFeedback: 'Правильно.',
+  incorrectFeedback: 'Попробуй ещё раз.',
+};
+
+test('single_choice checks the selected public option against the private key', () => {
+  assert.equal(
+    validatePuzzleAnswer(
+      'single_choice',
+      publicOptions,
+      { ...feedback, correctOptionId: 'b' },
+      { optionId: 'b' },
+    ).isCorrect,
+    true,
+  );
+  assert.equal(
+    validatePuzzleAnswer(
+      'single_choice',
+      publicOptions,
+      { correctOptionId: 'b' },
+      { optionId: 'a' },
+    ).isCorrect,
+    false,
+  );
+});
+
+test('multiple_choice compares the complete set independent of selection order', () => {
+  const solution = { ...feedback, correctOptionIds: ['a', 'c'] };
+  assert.equal(
+    validatePuzzleAnswer('multiple_choice', publicOptions, solution, {
+      optionIds: ['c', 'a'],
+    }).isCorrect,
+    true,
+  );
+  assert.equal(
+    validatePuzzleAnswer('multiple_choice', publicOptions, solution, {
+      optionIds: ['a'],
+    }).isCorrect,
+    false,
+  );
+  assert.throws(
+    () => validatePuzzleAnswer('multiple_choice', publicOptions, solution, {
+      optionIds: ['a', 'unknown'],
+    }),
+    BadRequestException,
+  );
+});
+
+test('numeric_input supports finite decimals and configured tolerance', () => {
+  assert.equal(
+    validatePuzzleAnswer(
+      'numeric_input',
+      {},
+      { ...feedback, correctValue: 12.5, tolerance: 0.1 },
+      { value: '12.55' },
+    ).isCorrect,
+    true,
+  );
+  assert.equal(
+    validatePuzzleAnswer(
+      'numeric_input',
+      {},
+      { correctValue: 12.5 },
+      { value: '12,5' },
+    ).isCorrect,
+    false,
+  );
+  assert.throws(
+    () => validatePuzzleAnswer(
+      'numeric_input',
+      {},
+      { correctValue: 12.5 },
+      { value: 'Infinity' },
+    ),
+    BadRequestException,
+  );
+});
+
+test('text_input normalizes case, whitespace, Unicode form and Russian ё', () => {
+  assert.equal(
+    validatePuzzleAnswer(
+      'text_input',
+      {},
+      { ...feedback, acceptedAnswers: ['всё верно', 'правильно'] },
+      { text: '  ВСЕ   ВЕРНО  ' },
+    ).isCorrect,
+    true,
+  );
+  assert.equal(
+    validatePuzzleAnswer(
+      'text_input',
+      {},
+      { acceptedAnswers: ['удвоение'] },
+      { text: 'удвоение!' },
+    ).isCorrect,
+    false,
+  );
+});
+
+test('ordering requires all items exactly once and in the private target order', () => {
+  const payload = {
+    items: [
+      { id: 'one', label: '1' },
+      { id: 'two', label: '2' },
+      { id: 'three', label: '3' },
+    ],
+  };
+  const solution = { ...feedback, correctOrderIds: ['one', 'two', 'three'] };
+  assert.equal(
+    validatePuzzleAnswer('ordering', payload, solution, {
+      orderedIds: ['one', 'two', 'three'],
+    }).isCorrect,
+    true,
+  );
+  assert.equal(
+    validatePuzzleAnswer('ordering', payload, solution, {
+      orderedIds: ['three', 'two', 'one'],
+    }).isCorrect,
+    false,
+  );
+  assert.throws(
+    () => validatePuzzleAnswer('ordering', payload, solution, {
+      orderedIds: ['one', 'one', 'three'],
+    }),
+    BadRequestException,
+  );
+});
+
+test('unknown puzzle types are rejected instead of silently accepted', () => {
+  assert.throws(
+    () => validatePuzzleAnswer('arbitrary_script', {}, {}, {}),
+    BadRequestException,
+  );
+});

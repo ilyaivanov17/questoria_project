@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -12,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
 import type { StartRunDto } from './dto/start-run.dto.js';
 import { asJsonRecord, asOptionList } from './json.js';
+import { validatePuzzleAnswer } from './puzzle-validator.js';
 
 const LEVEL_REWARD = { xp: 5, coins: 2 };
 const QUEST_REWARD = { xp: 25, coins: 10 };
@@ -109,6 +109,9 @@ export class QuestService {
             type: puzzle.type,
             prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
             options: asOptionList(payload.options),
+            items: asOptionList(payload.items),
+            placeholder: typeof payload.placeholder === 'string' ? payload.placeholder : null,
+            unit: typeof payload.unit === 'string' ? payload.unit : null,
             hints: puzzle.hints.map((hint) => hint.body),
           };
         }),
@@ -239,6 +242,9 @@ export class QuestService {
         type: current.puzzle.type,
         prompt: typeof currentPayload.prompt === 'string' ? currentPayload.prompt : '',
         options: asOptionList(currentPayload.options),
+        items: asOptionList(currentPayload.items),
+        placeholder: typeof currentPayload.placeholder === 'string' ? currentPayload.placeholder : null,
+        unit: typeof currentPayload.unit === 'string' ? currentPayload.unit : null,
         hints: current.puzzle.hints.map((hint) => hint.body),
         attemptsMade: puzzleAttempts.length,
         attemptsRemaining: Math.max(0, current.puzzle.maxAttempts - puzzleAttempts.length),
@@ -285,34 +291,13 @@ export class QuestService {
     if (!puzzle || puzzle.level.questVersionId !== run.questVersionId) {
       throw new NotFoundException('Puzzle not found in this quest run.');
     }
-    if (puzzle.type !== 'single_choice') {
-      throw new BadRequestException('This puzzle type is not supported in this MVP slice.');
-    }
-
-    const optionId = dto.answer.optionId;
-    if (typeof optionId !== 'string') {
-      throw new BadRequestException('answer.optionId must be a string.');
-    }
-
-    const payload = asJsonRecord(puzzle.publicPayload);
-    const options = asOptionList(payload.options);
-    if (!options.some((option) => option.id === optionId)) {
-      throw new BadRequestException('Select one of the available options.');
-    }
-
-    const solution = asJsonRecord(puzzle.solutionPrivate);
-    if (typeof solution.correctOptionId !== 'string') {
-      throw new Error('Published puzzle has an invalid private solution configuration.');
-    }
-
-    const isCorrect = optionId === solution.correctOptionId;
-    const feedback = isCorrect
-      ? (typeof solution.correctFeedback === 'string'
-        ? solution.correctFeedback
-        : 'Верно!')
-      : (typeof solution.incorrectFeedback === 'string'
-        ? solution.incorrectFeedback
-        : 'Пока не получилось. Попробуй ещё раз.');
+    const validation = validatePuzzleAnswer(
+      puzzle.type,
+      puzzle.publicPayload,
+      puzzle.solutionPrivate,
+      dto.answer,
+    );
+    const { isCorrect, feedback } = validation;
 
     try {
       const attempt = await this.prisma.$transaction(async (tx) => {

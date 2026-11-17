@@ -33,6 +33,31 @@ function extractCookie(response) {
   return setCookie.split(';', 1)[0];
 }
 
+async function submit(runId, puzzle, answer, cookie) {
+  const attemptId = randomUUID();
+  const result = await request(
+    `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attemptId, answer }),
+    },
+    cookie,
+  );
+  return { ...result, attemptId };
+}
+
+const expectedAnswers = [
+  { type: 'single_choice', answer: { optionId: 'opt_32' } },
+  { type: 'multiple_choice', answer: { optionIds: ['doubles', 'even'] } },
+  { type: 'numeric_input', answer: { value: '64' } },
+  { type: 'text_input', answer: { text: 'УДВОЕНИЕ' } },
+  {
+    type: 'ordering',
+    answer: { orderedIds: ['two', 'four', 'eight', 'sixteen', 'thirty_two'] },
+  },
+];
+
 await waitForApi();
 
 const email = `smoke-${randomUUID()}@questoria.test`;
@@ -61,7 +86,13 @@ const publicQuest = await request(`/api/v1/public/quests/${demoQuestSlug}`);
 assert.equal(publicQuest.response.status, 200);
 const publicQuestJson = JSON.stringify(publicQuest.body);
 assert.equal(publicQuestJson.includes('correctOptionId'), false, 'public quest payload leaked the answer');
+assert.equal(publicQuestJson.includes('correctOptionIds'), false, 'public quest payload leaked multiple-choice answers');
+assert.equal(publicQuestJson.includes('correctValue'), false, 'public quest payload leaked numeric answers');
+assert.equal(publicQuestJson.includes('acceptedAnswers'), false, 'public quest payload leaked text answers');
+assert.equal(publicQuestJson.includes('correctOrderIds'), false, 'public quest payload leaked ordering answers');
 assert.equal(publicQuestJson.includes('solution_private'), false);
+const publicPuzzleTypes = publicQuest.body.levels.flatMap((level) => level.puzzles.map((puzzle) => puzzle.type));
+assert.deepEqual(publicPuzzleTypes, expectedAnswers.map((item) => item.type));
 
 const started = await request('/api/v1/runs', {
   method: 'POST',
@@ -75,10 +106,10 @@ const runId = started.body.id;
 const loadedRun = await request(`/api/v1/runs/${runId}`, {}, userCookie);
 assert.equal(loadedRun.response.status, 200);
 assert.equal(loadedRun.body.status, 'IN_PROGRESS');
-const puzzle = loadedRun.body.currentPuzzle;
-assert.ok(puzzle?.id);
-assert.equal(puzzle.type, 'single_choice');
-assert.ok(puzzle.options.some((option) => option.id === 'opt_32'));
+let currentPuzzle = loadedRun.body.currentPuzzle;
+assert.ok(currentPuzzle?.id);
+assert.equal(currentPuzzle.type, 'single_choice');
+assert.ok(currentPuzzle.options.some((option) => option.id === 'opt_32'));
 
 const wrongAttemptId = randomUUID();
 const wrongRequest = {
@@ -87,7 +118,7 @@ const wrongRequest = {
   body: JSON.stringify({ attemptId: wrongAttemptId, answer: { optionId: 'opt_24' } }),
 };
 const wrong = await request(
-  `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
+  `/api/v1/runs/${runId}/puzzles/${currentPuzzle.id}/attempts`,
   wrongRequest,
   userCookie,
 );
@@ -97,7 +128,7 @@ assert.equal(wrong.body.attemptsRemaining, 2);
 assert.equal(wrong.body.attemptId, wrongAttemptId);
 
 const replay = await request(
-  `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
+  `/api/v1/runs/${runId}/puzzles/${currentPuzzle.id}/attempts`,
   wrongRequest,
   userCookie,
 );
@@ -105,39 +136,50 @@ assert.equal(replay.response.status, 201);
 assert.equal(replay.body.attemptId, wrongAttemptId);
 assert.equal(replay.body.attemptsRemaining, 2, 'idempotent replay must not consume another attempt');
 
-const correctAttemptId = randomUUID();
-const correctRequest = {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ attemptId: correctAttemptId, answer: { optionId: 'opt_32' } }),
-};
-const correct = await request(
-  `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
-  correctRequest,
-  userCookie,
-);
-assert.equal(correct.response.status, 201);
-assert.equal(correct.body.result, 'correct');
-assert.equal(correct.body.scoreAwarded, 10);
-assert.equal(correct.body.attemptId, correctAttemptId);
-assert.equal(correct.body.runCompleted, true);
-assert.equal(correct.body.rewards.xp, 40);
-assert.equal(correct.body.rewards.coins, 15);
-assert.equal(correct.body.rewards.firstCompletion, true);
+const correctFirst = await submit(runId, currentPuzzle, { optionId: 'opt_32' }, userCookie);
+assert.equal(correctFirst.response.status, 201);
+assert.equal(correctFirst.body.result, 'correct');
+assert.equal(correctFirst.body.scoreAwarded, 10);
+assert.equal(correctFirst.body.runCompleted, false);
+assert.deepEqual(correctFirst.body.rewards, { xp: 0, coins: 0, firstCompletion: false });
 
-const correctReplay = await request(
-  `/api/v1/runs/${runId}/puzzles/${puzzle.id}/attempts`,
-  correctRequest,
+const firstReplay = await request(
+  `/api/v1/runs/${runId}/puzzles/${currentPuzzle.id}/attempts`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attemptId: correctFirst.attemptId, answer: { optionId: 'opt_32' } }),
+  },
   userCookie,
 );
-assert.equal(correctReplay.response.status, 201);
-assert.deepEqual(correctReplay.body.rewards, { xp: 40, coins: 15, firstCompletion: true });
+assert.equal(firstReplay.response.status, 201);
+assert.deepEqual(firstReplay.body.rewards, { xp: 0, coins: 0, firstCompletion: false });
+
+let finalAttempt = null;
+for (const expected of expectedAnswers.slice(1)) {
+  const state = await request(`/api/v1/runs/${runId}`, {}, userCookie);
+  assert.equal(state.response.status, 200);
+  currentPuzzle = state.body.currentPuzzle;
+  assert.equal(currentPuzzle.type, expected.type);
+  if (expected.type === 'ordering') {
+    assert.equal(currentPuzzle.items.length, 5);
+  }
+  const result = await submit(runId, currentPuzzle, expected.answer, userCookie);
+  assert.equal(result.response.status, 201, `${expected.type} submission should be accepted`);
+  assert.equal(result.body.result, 'correct', `${expected.type} answer should be marked correct`);
+  finalAttempt = result;
+}
+
+assert.ok(finalAttempt);
+assert.equal(finalAttempt.body.runCompleted, true);
+assert.deepEqual(finalAttempt.body.rewards, { xp: 40, coins: 15, firstCompletion: true });
 
 const completed = await request(`/api/v1/runs/${runId}/result`, {}, userCookie);
 assert.equal(completed.response.status, 200);
 assert.equal(completed.body.status, 'COMPLETED');
 assert.equal(completed.body.result.success, true);
-assert.equal(completed.body.result.score, 10);
+assert.equal(completed.body.result.score, 50);
+assert.equal(completed.body.result.attempts, 6);
 assert.deepEqual(completed.body.result.rewards, {
   xp: 40,
   coins: 15,
@@ -159,7 +201,7 @@ const wallet = await request('/api/v1/me/wallet', {}, userCookie);
 assert.equal(wallet.response.status, 200);
 assert.equal(wallet.body.balances.xp, 40);
 assert.equal(wallet.body.balances.coins, 15);
-assert.equal(wallet.body.entries.length, 6, 'level, quest and final puzzle each produce XP and coin ledger entries');
+assert.equal(wallet.body.entries.length, 6, 'one completed level, quest and final puzzle each produce XP and coin entries');
 
 const profileUpdate = await request('/api/v1/me/profile', {
   method: 'PATCH',
@@ -195,21 +237,19 @@ const replayRun = await request('/api/v1/runs', {
 }, userCookie);
 assert.equal(replayRun.response.status, 201);
 const replayRunId = replayRun.body.id;
-const replayPuzzle = replayRun.body.currentPuzzle;
-const replayCompletion = await request(
-  `/api/v1/runs/${replayRunId}/puzzles/${replayPuzzle.id}/attempts`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attemptId: randomUUID(), answer: { optionId: 'opt_32' } }),
-  },
-  userCookie,
-);
-assert.equal(replayCompletion.response.status, 201);
+let replayState = replayRun.body;
+let replayCompletion = null;
+for (const expected of expectedAnswers) {
+  assert.equal(replayState.currentPuzzle.type, expected.type);
+  replayCompletion = await submit(replayRunId, replayState.currentPuzzle, expected.answer, userCookie);
+  assert.equal(replayCompletion.response.status, 201);
+  assert.equal(replayCompletion.body.result, 'correct');
+  replayState = await request(`/api/v1/runs/${replayRunId}`, {}, userCookie).then((result) => result.body);
+}
+
+assert.ok(replayCompletion);
 assert.equal(replayCompletion.body.runCompleted, true);
-assert.equal(replayCompletion.body.rewards.xp, 0);
-assert.equal(replayCompletion.body.rewards.coins, 0);
-assert.equal(replayCompletion.body.rewards.firstCompletion, false);
+assert.deepEqual(replayCompletion.body.rewards, { xp: 0, coins: 0, firstCompletion: false });
 
 const walletAfterReplay = await request('/api/v1/me/wallet', {}, userCookie);
 assert.equal(walletAfterReplay.body.balances.xp, 40);
@@ -226,4 +266,4 @@ const otherCookie = extractCookie(secondUser.response);
 const forbiddenRun = await request(`/api/v1/runs/${runId}`, {}, otherCookie);
 assert.equal(forbiddenRun.response.status, 404, 'users must not access another profile run');
 
-process.stdout.write('Questoria E2E smoke test passed: registration, sessions, quest run, answer validation, idempotency, persistence and ownership.\n');
+process.stdout.write('Questoria E2E smoke test passed: auth, five puzzle types, private answer validation, replay protection, XP/coin ledger, profile and ownership.\n');
