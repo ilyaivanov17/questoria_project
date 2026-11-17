@@ -104,4 +104,4 @@ CI дополнительно применяет миграции PostgreSQL, з
 
 CMS доступна по `/admin`. Назначение ролей выполняется только явной bootstrap-командой. Все операции контентного workflow записываются в `admin_audit_logs`; опубликованные версии и их уровни/задания защищены триггерами PostgreSQL от UPDATE/DELETE.
 
-Архитектурные решения: [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md), [ADR-010](docs/ADR/010-runtime-and-toolchain.md), [ADR-011](docs/ADR/011-wallet-ledger-and-rewards.md) и [ADR-012](docs/ADR/012-puzzle-engine-validation-contracts.md).
+Архитектурные решения: [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md), [ADR-010](docs/ADR/010-runtime-and-toolchain.md), [ADR-011](docs/ADR/011-wallet-ledger-and-rewards.md) и [ADR-012](docs/ADR/012-puzzle-engine-validation-contracts.md) и [ADR-013](docs/ADR/013-cms-rbac-mfa-versioning.md).

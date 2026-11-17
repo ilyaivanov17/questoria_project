@@ -76,6 +76,11 @@ const me = await request('/api/v1/auth/me', {}, userCookie);
 assert.equal(me.response.status, 200);
 assert.equal(me.body?.user?.email, email);
 
+const adminIdentityDenied = await request('/api/v1/admin/me', {}, userCookie);
+assert.equal(adminIdentityDenied.response.status, 403, 'ordinary learners must not access CMS identity');
+const adminContentDenied = await request('/api/v1/admin/categories', {}, userCookie);
+assert.equal(adminContentDenied.response.status, 403, 'ordinary learners must not list CMS categories');
+
 const categories = await request('/api/v1/public/categories');
 assert.equal(categories.response.status, 200);
 assert.ok(categories.body.some((category) =>
