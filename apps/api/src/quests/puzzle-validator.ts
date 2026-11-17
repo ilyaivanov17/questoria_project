@@ -6,6 +6,11 @@ export interface PuzzleValidationResult {
   feedback: string;
 }
 
+export interface PuzzleAnswerReview {
+  explanation: string;
+  correctAnswer: Record<string, unknown>;
+}
+
 function invalidAnswer(message: string): never {
   throw new BadRequestException(message);
 }
@@ -72,6 +77,73 @@ function parseNumericAnswer(value: unknown): number {
 
 function setEquals(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((item) => right.includes(item));
+}
+
+
+/**
+ * Creates the safe review payload shown only after the learner has used every
+ * allowed attempt. The regular public quest/run serializers must never call it.
+ */
+export function buildPuzzleReview(
+  type: string,
+  publicPayload: unknown,
+  solutionPrivate: unknown,
+): PuzzleAnswerReview {
+  const publicData = asJsonRecord(publicPayload);
+  const solution = asJsonRecord(solutionPrivate);
+  const options = asOptionList(publicData.options);
+  const items = asOptionList(publicData.items);
+  const explanation = solution.correctFeedback;
+
+  if (typeof explanation !== 'string' || explanation.trim().length === 0) {
+    invalidConfiguration('correctFeedback is required for puzzle review.');
+  }
+
+  let correctAnswer: Record<string, unknown>;
+  switch (type) {
+    case 'single_choice': {
+      const optionId = solution.correctOptionId;
+      if (typeof optionId !== 'string' || !options.some((option) => option.id === optionId)) {
+        invalidConfiguration('correctOptionId must match a public option.');
+      }
+      correctAnswer = { optionId };
+      break;
+    }
+    case 'multiple_choice': {
+      const optionIds = stringArray(solution.correctOptionIds, 'correctOptionIds');
+      const publicIds = new Set(options.map((option) => option.id));
+      if (optionIds.some((id) => !publicIds.has(id))) {
+        invalidConfiguration('correctOptionIds must match public options.');
+      }
+      correctAnswer = { optionIds };
+      break;
+    }
+    case 'numeric_input': {
+      const value = solution.correctValue;
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        invalidConfiguration('correctValue must be a finite number.');
+      }
+      correctAnswer = { value };
+      break;
+    }
+    case 'text_input': {
+      correctAnswer = { acceptedAnswers: stringArray(solution.acceptedAnswers, 'acceptedAnswers') };
+      break;
+    }
+    case 'ordering': {
+      const orderedIds = stringArray(solution.correctOrderIds, 'correctOrderIds');
+      const itemIds = items.map((item) => item.id);
+      if (itemIds.length < 2 || orderedIds.length !== itemIds.length || !setEquals(orderedIds, itemIds)) {
+        invalidConfiguration('correctOrderIds must contain every public item exactly once.');
+      }
+      correctAnswer = { orderedIds };
+      break;
+    }
+    default:
+      invalidConfiguration('puzzle type is not supported for review.');
+  }
+
+  return { explanation, correctAnswer };
 }
 
 export function validatePuzzleAnswer(
