@@ -92,7 +92,7 @@ export function AdminClient() {
     }
   }, [router]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { queueMicrotask(() => { void load(); }); }, [load]);
 
   async function action(work: () => Promise<unknown>, success: string) {
     setBusy(true); setError(''); setNotice('');

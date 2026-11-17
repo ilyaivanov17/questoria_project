@@ -41,9 +41,9 @@ async function seed(): Promise<void> {
 
     const quest = await client.query<{ id: string }>(
       `INSERT INTO quests (id, category_id, slug, status, updated_at)
-       VALUES ($1, $2, 'mystery-of-the-missing-number', 'PUBLISHED', NOW())
+       VALUES ($1, $2, 'mystery-of-the-missing-number', 'DRAFT', NOW())
        ON CONFLICT (slug) DO UPDATE SET
-         category_id = EXCLUDED.category_id, status = 'PUBLISHED', updated_at = NOW()
+         category_id = EXCLUDED.category_id, updated_at = NOW()
        RETURNING id`,
       [randomUUID(), category.rows[0].id],
     );
@@ -55,13 +55,8 @@ async function seed(): Promise<void> {
        VALUES ($1, $2, 2, 'Тайна пропавшего числа',
          'Пройди пять испытаний, чтобы раскрыть правило числового ряда и открыть шифрованную дверь.',
          $3::jsonb, 14, 99, 'Начальный', 12, 'ru',
-         $4::jsonb, 'PUBLISHED', NOW())
-       ON CONFLICT (quest_id, version_no) DO UPDATE SET
-         title = EXCLUDED.title, summary = EXCLUDED.summary,
-         objectives = EXCLUDED.objectives, age_min = EXCLUDED.age_min,
-         age_max = EXCLUDED.age_max, difficulty = EXCLUDED.difficulty,
-         duration_min = EXCLUDED.duration_min, seo = EXCLUDED.seo,
-         status = 'PUBLISHED', published_at = NOW()
+         $4::jsonb, 'DRAFT', NULL)
+       ON CONFLICT (quest_id, version_no) DO NOTHING
        RETURNING id`,
       [
         randomUUID(),
@@ -78,6 +73,24 @@ async function seed(): Promise<void> {
         }),
       ],
     );
+
+    if (!version.rows[0]) {
+      const existingVersion = await client.query<{ id: string; status: string }>(
+        `SELECT id, status FROM quest_versions WHERE quest_id = $1 AND version_no = 2`,
+        [quest.rows[0].id],
+      );
+      const current = existingVersion.rows[0];
+      if (!current) throw new Error('Demo quest version could not be created.');
+      if (current.status === 'PUBLISHED') {
+        await client.query('COMMIT');
+        process.stdout.write('Questoria demo quest version 2 is already published; seed skipped without mutating history.\\n');
+        return;
+      }
+      if (current.status !== 'DRAFT') {
+        throw new Error(`Demo quest version 2 is in ${current.status}; seed will not overwrite editorial workflow state.`);
+      }
+      version.rows.push({ id: current.id });
+    }
 
     const level = await client.query<{ id: string }>(
       `INSERT INTO levels (id, quest_version_id, order_no, title, intro)
@@ -206,6 +219,16 @@ async function seed(): Promise<void> {
         [randomUUID(), puzzle.rows[0].id, puzzleSeed.hint],
       );
     }
+
+    await client.query(
+      `UPDATE quest_versions SET status = 'PUBLISHED', published_at = COALESCE(published_at, NOW())
+       WHERE id = $1 AND status = 'DRAFT'`,
+      [version.rows[0].id],
+    );
+    await client.query(
+      `UPDATE quests SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1`,
+      [quest.rows[0].id],
+    );
 
     await client.query('COMMIT');
     process.stdout.write('Questoria demo quest with five puzzle types seeded successfully.\n');
