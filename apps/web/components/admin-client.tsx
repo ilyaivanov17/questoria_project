@@ -51,6 +51,11 @@ export function AdminClient() {
   const [notice, setNotice] = useState('');
   const [mfaSecret, setMfaSecret] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [showRecoveryInput, setShowRecoveryInput] = useState(false);
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState('');
+  const [recoveryTotpCode, setRecoveryTotpCode] = useState('');
+  const [recoveryCodeCount, setRecoveryCodeCount] = useState(0);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
   const [catTitle, setCatTitle] = useState('');
   const [catSlug, setCatSlug] = useState('');
@@ -92,6 +97,12 @@ export function AdminClient() {
         setCategories(cats);
         setQuests(qs);
         setManagedUsers(members);
+        if (result.user.mfaEnabled && result.user.sessionMfaVerified) {
+          const recoveryStatus = await api<{ remaining: number }>('/admin/mfa/recovery-codes/status');
+          setRecoveryCodeCount(recoveryStatus.remaining);
+        } else {
+          setRecoveryCodeCount(0);
+        }
         setCategoryId((value) => value || cats.find((cat) => cat.status === 'PUBLISHED')?.id || '');
         if (result.user.roleKeys.some((r) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(r))) {
           setAudit(await api<Audit[]>('/admin/audit-logs?take=30'));
@@ -111,11 +122,19 @@ export function AdminClient() {
 
   useEffect(() => { queueMicrotask(() => { void load(); }); }, [load]);
 
-  async function action(work: () => Promise<unknown>, success: string) {
+  async function action(work: () => Promise<unknown>, success: string): Promise<unknown> {
     setBusy(true); setError(''); setNotice('');
-    try { await work(); setNotice(success); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Операция не выполнена.'); }
-    finally { setBusy(false); }
+    try {
+      const result = await work();
+      setNotice(success);
+      await load();
+      return result;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Операция не выполнена.');
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function beginMfa() {
@@ -129,8 +148,57 @@ export function AdminClient() {
 
   async function verifyMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await action(() => api('/admin/mfa/verify', { method: 'POST', body: JSON.stringify({ code: mfaCode }) }), 'MFA подтверждена для этой сессии.');
+    const result = await action(
+      () => api<{ recoveryCodes?: string[]; recoveryCodesRemaining?: number }>('/admin/mfa/verify', {
+        method: 'POST',
+        body: JSON.stringify({ code: mfaCode }),
+      }),
+      'MFA подтверждена для этой сессии.',
+    ) as { recoveryCodes?: string[]; recoveryCodesRemaining?: number } | undefined;
+    if (result?.recoveryCodes?.length) {
+      setRecoveryCodes(result.recoveryCodes);
+      setRecoveryCodeCount(result.recoveryCodesRemaining ?? result.recoveryCodes.length);
+      setNotice('MFA включена. Сохрани резервные коды сейчас: они больше не будут показаны.');
+    }
     setMfaSecret(''); setMfaCode('');
+  }
+
+  async function useRecoveryCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await action(
+      () => api('/admin/mfa/recovery-codes/use', {
+        method: 'POST',
+        body: JSON.stringify({ code: recoveryCodeInput }),
+      }),
+      'Резервный код принят. MFA подтверждена для этой сессии.',
+    );
+    setRecoveryCodeInput('');
+    setShowRecoveryInput(false);
+  }
+
+  async function regenerateRecoveryCodes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await action(
+      () => api<{ codes: string[]; remaining: number }>('/admin/mfa/recovery-codes/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({ code: recoveryTotpCode }),
+      }),
+      'Резервные коды обновлены. Старый набор больше не работает.',
+    ) as { codes: string[]; remaining: number } | undefined;
+    if (result) {
+      setRecoveryCodes(result.codes);
+      setRecoveryCodeCount(result.remaining);
+    }
+    setRecoveryTotpCode('');
+  }
+
+  async function copyRecoveryCodes() {
+    try {
+      await navigator.clipboard.writeText(recoveryCodes.join('\n'));
+      setNotice('Резервные коды скопированы.');
+    } catch {
+      setError('Не удалось скопировать коды. Выдели их и скопируй вручную.');
+    }
   }
 
   async function submitCategory(event: FormEvent<HTMLFormElement>) {
@@ -234,6 +302,17 @@ export function AdminClient() {
         <label className="field"><span>Шестизначный код</span><input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} inputMode="numeric" maxLength={6} pattern="[0-9]{6}" required/></label>
         <button className="button button-primary" disabled={busy || mfaCode.length !== 6} type="submit">Подтвердить</button>
       </form>}
+      {identity.mfaEnabled && <div className="admin-mfa-recovery-login">
+        <button className="button button-secondary" type="button" onClick={() => setShowRecoveryInput((value) => !value)}>
+          {showRecoveryInput ? 'Вернуться к коду приложения' : 'Нет доступа к приложению? Использовать резервный код'}
+        </button>
+        {showRecoveryInput && <form className="admin-form" onSubmit={useRecoveryCode}>
+          <label className="field"><span>Одноразовый резервный код</span>
+            <input value={recoveryCodeInput} onChange={(event) => setRecoveryCodeInput(event.target.value)} autoComplete="one-time-code" minLength={24} maxLength={30} required placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX"/>
+          </label>
+          <button className="button button-primary" disabled={busy || recoveryCodeInput.replace(/[\s-]/g, '').length !== 24} type="submit">Подтвердить резервным кодом</button>
+        </form>}
+      </div>}
       {error && <p className="form-error" role="alert">{error}</p>}{notice && <p className="form-success">{notice}</p>}
     </section></main>;
   }
@@ -242,6 +321,28 @@ export function AdminClient() {
     <header className="admin-header"><div><p className="eyebrow">QUESTORIA CONTENT STUDIO</p><h1>Управление контентом</h1><p className="muted-copy">{identity.email} · {identity.roleKeys.join(', ')}</p></div><a className="button button-secondary" href="/quests">Открыть каталог</a></header>
     {error && <p className="form-error admin-alert" role="alert">{error}</p>}{notice && <p className="form-success admin-alert" role="status">{notice}</p>}
 
+    {identity.mfaEnabled && identity.sessionMfaVerified && <section className="admin-panel admin-mfa-recovery-panel">
+      <div className="admin-section-title">
+        <div><p className="eyebrow">ACCOUNT SECURITY</p><h2>Резервные коды MFA</h2>
+          <p className="admin-section-description">Осталось кодов: <strong>{recoveryCodeCount}</strong>. Каждый код можно применить только один раз.</p>
+        </div>
+        <span className="admin-count">{recoveryCodeCount}</span>
+      </div>
+      <form className="admin-form admin-mfa-regenerate-form" onSubmit={regenerateRecoveryCodes}>
+        <label className="field"><span>Текущий код из приложения-аутентификатора</span>
+          <input value={recoveryTotpCode} onChange={(event) => setRecoveryTotpCode(event.target.value)} inputMode="numeric" maxLength={6} pattern="[0-9]{6}" required placeholder="123456"/>
+        </label>
+        <button className="button button-secondary" type="submit" disabled={busy || recoveryTotpCode.length !== 6}>Создать новый набор из 10 кодов</button>
+      </form>
+      {recoveryCodes.length > 0 && <div className="admin-recovery-codes">
+        <p className="form-success">Сохрани эти коды в надёжном месте. После закрытия этого блока показать их снова будет нельзя.</p>
+        <div className="admin-recovery-code-grid">{recoveryCodes.map((code) => <code key={code}>{code}</code>)}</div>
+        <div className="admin-row-actions">
+          <button className="button button-small button-secondary" type="button" onClick={() => void copyRecoveryCodes()}>Скопировать все коды</button>
+          <button className="button button-small button-secondary" type="button" onClick={() => setRecoveryCodes([])}>Скрыть коды</button>
+        </div>
+      </div>}
+    </section>}
 
     {isSuperAdmin && <section className="admin-panel admin-users-panel">
       <div className="admin-section-title">

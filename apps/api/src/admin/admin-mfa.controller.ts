@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
-import { VerifyMfaDto } from './dto/mfa.dto.js';
+import { UseMfaRecoveryCodeDto, VerifyMfaDto } from './dto/mfa.dto.js';
 import { Roles } from './roles.decorator.js';
 import { RolesGuard } from './roles.guard.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
@@ -32,5 +32,28 @@ export class AdminMfaController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   verify(@Req() request: Request, @Body() dto: VerifyMfaDto): Promise<object> {
     return this.mfa.verify(request.authUser as AuthenticatedUser, dto.code);
+  }
+
+  @Get('mfa/recovery-codes/status')
+  recoveryCodeStatus(@Req() request: Request): Promise<object> {
+    return this.mfa.recoveryCodeStatus(request.authUser as AuthenticatedUser);
+  }
+
+  @Post('mfa/recovery-codes/use')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  useRecoveryCode(
+    @Req() request: Request,
+    @Body() dto: UseMfaRecoveryCodeDto,
+  ): Promise<object> {
+    return this.mfa.useRecoveryCode(request.authUser as AuthenticatedUser, dto.code);
+  }
+
+  @Post('mfa/recovery-codes/regenerate')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  regenerateRecoveryCodes(
+    @Req() request: Request,
+    @Body() dto: VerifyMfaDto,
+  ): Promise<object> {
+    return this.mfa.regenerateRecoveryCodes(request.authUser as AuthenticatedUser, dto.code);
   }
 }
