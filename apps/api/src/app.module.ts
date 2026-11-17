@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { QuestModule } from './quests/quest.module.js';
 import { ProfileModule } from './profile/profile.module.js';
 import { AppController } from './app.controller.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { AppController } from './app.controller.js';
     AuthModule,
     QuestModule,
     ProfileModule,
+    AdminModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
   ],
   controllers: [AppController],

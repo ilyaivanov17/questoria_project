@@ -9,7 +9,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
-    "test": "tsx --test src/**/*.spec.ts"
+    "test": "tsx --test src/**/*.spec.ts",
+    "admin:grant-role": "tsx src/grant-role.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.0",

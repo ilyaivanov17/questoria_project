@@ -38,7 +38,14 @@ export class AuthGuard implements CanActivate {
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const session = await this.prisma.session.findUnique({
       where: { tokenHash },
-      include: { user: { include: { profile: true } } },
+      include: {
+        user: {
+          include: {
+            profile: true,
+            roles: { include: { role: true } },
+          },
+        },
+      },
     });
 
     if (
@@ -56,6 +63,9 @@ export class AuthGuard implements CanActivate {
       sessionId: session.id,
       email: session.user.emailNormalized,
       nickname: session.user.profile.nickname,
+      roleKeys: session.user.roles.map((entry) => entry.role.key),
+      mfaEnabled: Boolean(session.user.mfaEnabledAt),
+      sessionMfaVerified: Boolean(session.mfaVerifiedAt),
     };
 
     return true;

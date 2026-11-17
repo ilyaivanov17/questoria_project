@@ -14,6 +14,20 @@ async function seed(): Promise<void> {
   try {
     await client.query('BEGIN');
 
+    const roles = [
+      ['AUTHOR', 'Автор контента'],
+      ['REVIEWER', 'Редактор-рецензент'],
+      ['ADMIN', 'Администратор'],
+      ['SUPER_ADMIN', 'Суперадминистратор'],
+    ] as const;
+    for (const [key, name] of roles) {
+      await client.query(
+        `INSERT INTO roles (id, key, name) VALUES ($1, $2, $3)
+         ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name`,
+        [randomUUID(), key, name],
+      );
+    }
+
     const category = await client.query<{ id: string }>(
       `INSERT INTO categories (id, slug, locale, title, description, status, sort_order, updated_at)
        VALUES ($1, 'logic', 'ru', 'Логика и мышление',
