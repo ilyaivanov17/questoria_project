@@ -27,7 +27,6 @@ test(
     const prisma = new PrismaService();
     await prisma.$connect();
 
-    let userId: string | undefined;
     let profileId: string | undefined;
     let categoryId: string | undefined;
     let questId: string | undefined;
@@ -36,7 +35,8 @@ test(
       try {
         await prisma.$transaction(async (tx) => {
           if (profileId) {
-            await tx.walletLedger.deleteMany({ where: { profileId } });
+            // wallet_ledger is intentionally append-only and references profiles.
+            // Keep this unique synthetic user/profile as the immutable ledger owner.
             await tx.questCompletion.deleteMany({ where: { profileId } });
             await tx.puzzleAttempt.deleteMany({ where: { profileId } });
             await tx.levelProgress.deleteMany({
@@ -59,12 +59,6 @@ test(
           if (categoryId) {
             await tx.category.deleteMany({ where: { id: categoryId } });
           }
-          if (profileId) {
-            await tx.profile.deleteMany({ where: { id: profileId } });
-          }
-          if (userId) {
-            await tx.user.deleteMany({ where: { id: userId } });
-          }
         });
       } finally {
         await prisma.$disconnect();
@@ -82,7 +76,6 @@ test(
       },
       include: { profile: true },
     });
-    userId = user.id;
     assert.ok(user.profile, 'the integration fixture must create a profile');
     profileId = user.profile.id;
 
