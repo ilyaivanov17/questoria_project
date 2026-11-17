@@ -18,7 +18,7 @@ fi
 DB_HOST="$(node -e 'const u = new URL(process.env.DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(u.hostname)')"
 DB_PORT="$(node -e 'const u = new URL(process.env.DATABASE_URL); process.stdout.write(u.port || "5432")')"
 DB_USER="$(node -e 'const u = new URL(process.env.DATABASE_URL); process.stdout.write(decodeURIComponent(u.username))')"
-DB_NAME="$(node -e 'const u = new URL(process.env.DATABASE_URL); process.stdout.write(decodeURIComponent(u.pathname.replace(/^\\//, "")))')"
+DB_NAME="$(node -e 'const u = new URL(process.env.DATABASE_URL); process.stdout.write(decodeURIComponent(u.pathname.slice(1)))')"
 
 case "$DB_HOST" in
   localhost|127.0.0.1|::1) ;;
@@ -29,13 +29,13 @@ if [[ "$DB_PORT" != "5432" || -z "$DB_NAME" ]]; then
   exit 1
 fi
 
-COMPOSE_PATH="$ROOT/$COMPOSE_FILE"
+if [[ "$COMPOSE_FILE" = /* ]]; then COMPOSE_PATH="$COMPOSE_FILE"; else COMPOSE_PATH="$ROOT/$COMPOSE_FILE"; fi
 compose=(docker compose -f "$COMPOSE_PATH")
 if ! "${compose[@]}" ps --status running --services | grep -qx postgres; then
   echo "PostgreSQL Compose service is not running. Start it with: docker compose -f $COMPOSE_FILE up -d postgres" >&2
   exit 1
 fi
-CONTAINER_USER="$("${compose[@]}" exec -T postgres printenv POSTGRES_USER | tr -d '\\r\\n')"
+CONTAINER_USER="$("${compose[@]}" exec -T postgres printenv POSTGRES_USER | tr -d '\r\n')"
 if [[ "$DB_USER" != "$CONTAINER_USER" ]]; then
   echo "DATABASE_URL user must match POSTGRES_USER in the Compose service." >&2
   exit 1
