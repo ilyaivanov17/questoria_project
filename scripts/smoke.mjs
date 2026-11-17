@@ -119,12 +119,46 @@ assert.equal(correct.response.status, 201);
 assert.equal(correct.body.result, 'correct');
 assert.equal(correct.body.scoreAwarded, 10);
 assert.equal(correct.body.attemptId, correctAttemptId);
+assert.equal(correct.body.runCompleted, true);
+assert.equal(correct.body.rewards.xp, 40);
+assert.equal(correct.body.rewards.coins, 15);
+assert.equal(correct.body.rewards.firstCompletion, true);
 
 const completed = await request(`/api/v1/runs/${runId}/result`, {}, userCookie);
 assert.equal(completed.response.status, 200);
 assert.equal(completed.body.status, 'COMPLETED');
 assert.equal(completed.body.result.success, true);
 assert.equal(completed.body.result.score, 10);
+assert.deepEqual(completed.body.result.rewards, {
+  xp: 40,
+  coins: 15,
+  firstCompletion: true,
+});
+
+const profile = await request('/api/v1/me/profile', {}, userCookie);
+assert.equal(profile.response.status, 200);
+assert.equal(profile.body.wallet.xp, 40);
+assert.equal(profile.body.wallet.coins, 15);
+assert.equal(profile.body.stats.completedQuests, 1);
+
+const progress = await request('/api/v1/me/progress', {}, userCookie);
+assert.equal(progress.response.status, 200);
+assert.equal(progress.body.stats.completedQuests, 1);
+assert.equal(progress.body.stats.completedRuns, 1);
+
+const wallet = await request('/api/v1/me/wallet', {}, userCookie);
+assert.equal(wallet.response.status, 200);
+assert.equal(wallet.body.balances.xp, 40);
+assert.equal(wallet.body.balances.coins, 15);
+assert.equal(wallet.body.entries.length, 6, 'level, quest and final puzzle each produce XP and coin ledger entries');
+
+const profileUpdate = await request('/api/v1/me/profile', {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ nickname: 'Smoke Champion' }),
+}, userCookie);
+assert.equal(profileUpdate.response.status, 200);
+assert.equal(profileUpdate.body.nickname, 'Smoke Champion');
 
 const logout = await request('/api/v1/auth/logout', { method: 'POST' }, userCookie);
 assert.equal(logout.response.status, 204);
@@ -144,6 +178,33 @@ userCookie = extractCookie(login.response);
 const resumed = await request(`/api/v1/runs/${runId}`, {}, userCookie);
 assert.equal(resumed.response.status, 200);
 assert.equal(resumed.body.status, 'COMPLETED');
+
+const replayRun = await request('/api/v1/runs', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ slug: demoQuestSlug }),
+}, userCookie);
+assert.equal(replayRun.response.status, 201);
+const replayRunId = replayRun.body.id;
+const replayPuzzle = replayRun.body.currentPuzzle;
+const replayCompletion = await request(
+  `/api/v1/runs/${replayRunId}/puzzles/${replayPuzzle.id}/attempts`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attemptId: randomUUID(), answer: { optionId: 'opt_32' } }),
+  },
+  userCookie,
+);
+assert.equal(replayCompletion.response.status, 201);
+assert.equal(replayCompletion.body.runCompleted, true);
+assert.equal(replayCompletion.body.rewards.xp, 0);
+assert.equal(replayCompletion.body.rewards.coins, 0);
+assert.equal(replayCompletion.body.rewards.firstCompletion, false);
+
+const walletAfterReplay = await request('/api/v1/me/wallet', {}, userCookie);
+assert.equal(walletAfterReplay.body.balances.xp, 40);
+assert.equal(walletAfterReplay.body.balances.coins, 15);
 
 const secondEmail = `smoke-${randomUUID()}@questoria.test`;
 const secondUser = await request('/api/v1/auth/register', {
