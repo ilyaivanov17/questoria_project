@@ -17,6 +17,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [nickname, setNickname] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [canResendVerification, setCanResendVerification] = useState(false);
   const [busy, setBusy] = useState(false);
   const isRegister = mode === 'register';
 
@@ -24,6 +25,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     event.preventDefault();
     setError('');
     setNotice('');
+    setCanResendVerification(false);
     setBusy(true);
 
     try {
@@ -40,7 +42,16 @@ export function AuthForm({ mode }: AuthFormProps) {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.message ?? data.error?.message ?? 'Не удалось выполнить запрос.');
+        const message = data.message ?? data.error?.message ?? 'Не удалось выполнить запрос.';
+        if (
+          !isRegister &&
+          response.status === 403 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('подтверди')
+        ) {
+          setCanResendVerification(true);
+        }
+        throw new Error(message);
       }
 
       if (isRegister) {
@@ -133,7 +144,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         <button className="button button-primary submit-button" disabled={busy} type="submit">
           {busy ? 'Подождите…' : isRegister ? 'Создать аккаунт' : 'Войти'}
         </button>
-        {isRegister && notice && (
+        {(isRegister && notice || canResendVerification) && (
           <button
             className="button button-secondary submit-button"
             disabled={busy}
