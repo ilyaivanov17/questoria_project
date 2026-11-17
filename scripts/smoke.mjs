@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 const apiBase = process.env.API_BASE_URL ?? 'http://127.0.0.1:4000';
 const demoQuestSlug = 'mystery-of-the-missing-number';
@@ -369,6 +370,90 @@ const newPasswordLogin = await request('/api/v1/auth/login', {
 });
 assert.equal(newPasswordLogin.response.status, 200);
 userCookie = extractCookie(newPasswordLogin.response);
+
+// Bootstrap a disposable Super Admin account for the protected CMS session checks.
+const roleGrant = spawnSync('pnpm', ['--filter', '@questoria/api', 'admin:grant-role', email, 'SUPER_ADMIN'], {
+  encoding: 'utf8',
+  env: { ...process.env, QUESTORIA_ALLOW_ROLE_GRANT: '1' },
+});
+assert.equal(roleGrant.status, 0, 'smoke Super Admin bootstrap failed: ' + (roleGrant.stderr || roleGrant.stdout));
+
+const { createTotpCode } = await import('../apps/api/dist/admin/totp.js');
+const adminWriteHeaders = {
+  'Content-Type': 'application/json',
+  Origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+};
+const mfaSetup = await request('/api/v1/admin/mfa/setup', {
+  method: 'POST',
+  headers: adminWriteHeaders,
+}, userCookie);
+assert.equal(mfaSetup.response.status, 201, 'Super Admin must be able to start MFA setup');
+assert.ok(mfaSetup.body?.secret);
+const mfaVerify = await request('/api/v1/admin/mfa/verify', {
+  method: 'POST',
+  headers: adminWriteHeaders,
+  body: JSON.stringify({ code: createTotpCode(mfaSetup.body.secret) }),
+}, userCookie);
+assert.equal(mfaVerify.response.status, 201, 'Super Admin must be able to verify MFA');
+
+const adminMe = await request('/api/v1/admin/me', {}, userCookie);
+assert.equal(adminMe.response.status, 200);
+const adminUserId = adminMe.body.user.userId;
+
+// A second login creates another session that the current MFA-verified session can revoke.
+const extraLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password: newPassword }),
+});
+assert.equal(extraLogin.response.status, 200);
+const extraCookie = extractCookie(extraLogin.response);
+
+const sessionInventory = await request('/api/v1/admin/users/' + adminUserId + '/sessions', {}, userCookie);
+assert.equal(sessionInventory.response.status, 200);
+assert.ok(Array.isArray(sessionInventory.body.sessions));
+assert.ok(sessionInventory.body.sessions.some((session) => session.isCurrent), 'session inventory must identify the current session');
+assert.ok(sessionInventory.body.sessions.some((session) => !session.isCurrent), 'session inventory must show the second login');
+assert.equal(JSON.stringify(sessionInventory.body).includes('tokenHash'), false, 'session inventory must never expose token hashes');
+
+const currentSession = sessionInventory.body.sessions.find((session) => session.isCurrent);
+const extraSession = sessionInventory.body.sessions.find((session) => !session.isCurrent);
+const currentRevoke = await request('/api/v1/admin/users/' + adminUserId + '/sessions/' + currentSession.id, {
+  method: 'DELETE',
+  headers: adminWriteHeaders,
+  body: JSON.stringify({ reason: 'Security smoke current-session guard' }),
+}, userCookie);
+assert.equal(currentRevoke.response.status, 403, 'the current session must never revoke itself');
+
+const singleRevoke = await request('/api/v1/admin/users/' + adminUserId + '/sessions/' + extraSession.id, {
+  method: 'DELETE',
+  headers: adminWriteHeaders,
+  body: JSON.stringify({ reason: 'Security smoke single-session revoke' }),
+}, userCookie);
+assert.equal(singleRevoke.response.status, 200);
+assert.equal(singleRevoke.body.revoked, true);
+const extraSessionDenied = await request('/api/v1/auth/me', {}, extraCookie);
+assert.equal(extraSessionDenied.response.status, 401, 'revoked session must no longer authenticate');
+
+const secondExtraLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password: newPassword }),
+});
+assert.equal(secondExtraLogin.response.status, 200);
+const secondExtraCookie = extractCookie(secondExtraLogin.response);
+const revokeOthers = await request('/api/v1/admin/users/' + adminUserId + '/sessions/revoke-others', {
+  method: 'POST',
+  headers: adminWriteHeaders,
+  body: JSON.stringify({ reason: 'Security smoke revoke all other sessions' }),
+}, userCookie);
+assert.equal(revokeOthers.response.status, 201);
+assert.equal(revokeOthers.body.revokedCount, 1);
+assert.equal(revokeOthers.body.currentSessionPreserved, true);
+const secondExtraDenied = await request('/api/v1/auth/me', {}, secondExtraCookie);
+assert.equal(secondExtraDenied.response.status, 401, 'revoke-others must invalidate other sessions');
+const currentStillValid = await request('/api/v1/auth/me', {}, userCookie);
+assert.equal(currentStillValid.response.status, 200, 'revoke-others must preserve the current admin session');
 
 const secondEmail = 'smoke-' + randomUUID() + '@questoria.test';
 const secondUser = await request('/api/v1/auth/register', {

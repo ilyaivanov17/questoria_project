@@ -11,6 +11,9 @@ type ManagedUser = {
   id: string; email: string; nickname: string | null; status: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
   emailVerified: boolean; mfaEnabled: boolean; createdAt: string; roles: Array<{ key: string; name: string }>;
 };
+type ManagedSession = {
+  id: string; createdAt: string; expiresAt: string; mfaVerified: boolean; isCurrent: boolean;
+};
 const managedRoleOptions = [
   { key: 'AUTHOR', label: 'Автор' },
   { key: 'REVIEWER', label: 'Рецензент' },
@@ -45,6 +48,9 @@ export function AdminClient() {
   const [userSearch, setUserSearch] = useState('');
   const [userRoleDrafts, setUserRoleDrafts] = useState<Record<string, string>>({});
   const [userReasons, setUserReasons] = useState<Record<string, string>>({});
+  const [userSessions, setUserSessions] = useState<Record<string, ManagedSession[]>>({});
+  const [expandedSessionUsers, setExpandedSessionUsers] = useState<Record<string, boolean>>({});
+  const [sessionLoading, setSessionLoading] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -202,6 +208,52 @@ export function AdminClient() {
       : `Аккаунт ${user.email} снова активен. Пользователю нужно войти заново.`);
   }
 
+  async function loadManagedSessions(userId: string) {
+    setSessionLoading((current) => ({ ...current, [userId]: true }));
+    try {
+      const result = await api<{ sessions: ManagedSession[] }>('/admin/users/' + userId + '/sessions');
+      setUserSessions((current) => ({ ...current, [userId]: result.sessions }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить сессии пользователя.');
+    } finally {
+      setSessionLoading((current) => ({ ...current, [userId]: false }));
+    }
+  }
+
+  async function toggleManagedSessions(user: ManagedUser) {
+    const expanded = Boolean(expandedSessionUsers[user.id]);
+    setExpandedSessionUsers((current) => ({ ...current, [user.id]: !expanded }));
+    if (!expanded && userSessions[user.id] === undefined) {
+      await loadManagedSessions(user.id);
+    }
+  }
+
+  async function revokeManagedSession(user: ManagedUser, session: ManagedSession) {
+    const reason = userReasons[user.id]?.trim() ?? '';
+    if (reason.length < 5) {
+      setError('Укажи причину отзыва сессии (минимум 5 символов).');
+      return;
+    }
+    await action(() => api('/admin/users/' + user.id + '/sessions/' + session.id, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }), 'Сессия пользователя ' + user.email + ' завершена.');
+    if (expandedSessionUsers[user.id]) await loadManagedSessions(user.id);
+  }
+
+  async function revokeOtherManagedSessions(user: ManagedUser) {
+    const reason = userReasons[user.id]?.trim() ?? '';
+    if (reason.length < 5) {
+      setError('Укажи причину отзыва сессий (минимум 5 символов).');
+      return;
+    }
+    await action(() => api('/admin/users/' + user.id + '/sessions/revoke-others', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }), 'Остальные сессии пользователя ' + user.email + ' завершены.');
+    if (expandedSessionUsers[user.id]) await loadManagedSessions(user.id);
+  }
+
   function workflow(quest: Quest, state: string) {
     const path = state === 'PUBLISHED' ? 'draft' : state === 'DRAFT' ? 'submit-review' : state === 'REVIEW' ? 'approve' : 'publish';
     const text = { DRAFT: 'Отправлено на рецензию.', REVIEW: 'Версия одобрена.', APPROVED: 'Квест опубликован.', PUBLISHED: 'Новая версия создана.' }[state] ?? 'Готово.';
@@ -275,6 +327,37 @@ export function AdminClient() {
                     {!isSelf && <button type="button" disabled={busy} onClick={() => void revokeManagedRole(user, role.key)} aria-label={`Снять роль ${role.name} у ${user.email}`}>×</button>}
                   </span>
                 )) : <span className="admin-no-role">Без ролей CMS</span>}
+              </div>
+              <div className="admin-session-controls">
+                <div className="admin-session-toolbar">
+                  <button className="button button-small button-secondary" type="button" disabled={busy || sessionLoading[user.id]} onClick={() => void toggleManagedSessions(user)}>
+                    {expandedSessionUsers[user.id] ? 'Скрыть сессии' : 'Активные сессии'}
+                  </button>
+                  {expandedSessionUsers[user.id] && (userSessions[user.id] ?? []).some((session) => !session.isCurrent) && (
+                    <button className="button button-small button-danger" type="button" disabled={busy} onClick={() => void revokeOtherManagedSessions(user)}>
+                      Завершить остальные
+                    </button>
+                  )}
+                </div>
+                {expandedSessionUsers[user.id] && <div className="admin-session-list">
+                  <label className="field admin-session-reason"><span>Причина отзыва (минимум 5 символов)</span>
+                    <input value={userReasons[user.id] ?? ''} onChange={(event) => setUserReasons((current) => ({ ...current, [user.id]: event.target.value }))} placeholder="Например: завершение подозрительных входов"/>
+                  </label>
+                  {sessionLoading[user.id] && <p className="admin-empty">Загружаем сессии…</p>}
+                  {!sessionLoading[user.id] && (userSessions[user.id] ?? []).map((session) => (
+                    <article className="admin-session-row" key={session.id}>
+                      <div>
+                        <strong>{session.isCurrent ? 'Текущая сессия' : 'Активная сессия'}</strong>
+                        <span>Создана {new Date(session.createdAt).toLocaleString('ru-RU')} · действует до {new Date(session.expiresAt).toLocaleString('ru-RU')}</span>
+                        <small>{session.mfaVerified ? 'MFA подтверждена' : 'MFA в этой сессии не подтверждена'}</small>
+                      </div>
+                      {session.isCurrent
+                        ? <span className="admin-current-session">Текущая</span>
+                        : <button className="button button-small button-danger" type="button" disabled={busy} onClick={() => void revokeManagedSession(user, session)}>Завершить</button>}
+                    </article>
+                  ))}
+                  {!sessionLoading[user.id] && !(userSessions[user.id] ?? []).length && <p className="admin-empty">Активных сессий нет.</p>}
+                </div>}
               </div>
               {!isSelf && <div className="admin-user-management">
                 <label className="field"><span>Назначить роль</span>
