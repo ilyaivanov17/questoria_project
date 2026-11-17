@@ -1,0 +1,35 @@
+name: Infrastructure validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate development infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate devcontainer configuration
+        run: |
+          node -e "JSON.parse(require('node:fs').readFileSync('.devcontainer/devcontainer.json', 'utf8'))"
+          test -x scripts/codespaces-setup.sh
+          test -x scripts/codespaces-start.sh
+          test -x scripts/check-environment.sh
+
+      - name: Validate shell scripts
+        run: bash -n scripts/*.sh
+
+      - name: Validate Docker Compose configuration
+        run: docker compose -f infra/docker/docker-compose.yml config --quiet
