@@ -497,4 +497,62 @@ const consumeFreshCode = await request('/api/v1/admin/mfa/recovery-codes/use', {
 assert.equal(consumeFreshCode.response.status, 201);
 assert.equal(consumeFreshCode.body.remaining, 9);
 
+
+const adminUserId = adminIdentity.body.user.userId;
+
+// Create another login and verify that the current MFA session can inspect and revoke it.
+const extraLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password: newPassword }),
+});
+assert.equal(extraLogin.response.status, 200);
+const extraCookie = extractCookie(extraLogin.response);
+
+const sessionInventory = await request('/api/v1/admin/users/' + adminUserId + '/sessions', {}, userCookie);
+assert.equal(sessionInventory.response.status, 200);
+assert.ok(Array.isArray(sessionInventory.body.sessions));
+assert.ok(sessionInventory.body.sessions.some((session) => session.isCurrent), 'session inventory must identify the current session');
+assert.ok(sessionInventory.body.sessions.some((session) => !session.isCurrent), 'session inventory must show the second login');
+assert.equal(JSON.stringify(sessionInventory.body).includes('tokenHash'), false, 'session inventory must never expose token hashes');
+
+const currentSession = sessionInventory.body.sessions.find((session) => session.isCurrent);
+const extraSession = sessionInventory.body.sessions.find((session) => !session.isCurrent);
+const currentRevoke = await request('/api/v1/admin/users/' + adminUserId + '/sessions/' + currentSession.id, {
+  method: 'DELETE',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ reason: 'Security smoke current-session guard' }),
+}, userCookie);
+assert.equal(currentRevoke.response.status, 403, 'the current session must never revoke itself');
+
+const singleRevoke = await request('/api/v1/admin/users/' + adminUserId + '/sessions/' + extraSession.id, {
+  method: 'DELETE',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ reason: 'Security smoke single-session revoke' }),
+}, userCookie);
+assert.equal(singleRevoke.response.status, 200);
+assert.equal(singleRevoke.body.revoked, true);
+const extraSessionDenied = await request('/api/v1/auth/me', {}, extraCookie);
+assert.equal(extraSessionDenied.response.status, 401, 'revoked session must no longer authenticate');
+
+const secondExtraLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password: newPassword }),
+});
+assert.equal(secondExtraLogin.response.status, 200);
+const secondExtraCookie = extractCookie(secondExtraLogin.response);
+const revokeOthers = await request('/api/v1/admin/users/' + adminUserId + '/sessions/revoke-others', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ reason: 'Security smoke revoke all other sessions' }),
+}, userCookie);
+assert.equal(revokeOthers.response.status, 201);
+assert.equal(revokeOthers.body.revokedCount, 1);
+assert.equal(revokeOthers.body.currentSessionPreserved, true);
+const secondExtraDenied = await request('/api/v1/auth/me', {}, secondExtraCookie);
+assert.equal(secondExtraDenied.response.status, 401, 'revoke-others must invalidate other sessions');
+const currentStillValid = await request('/api/v1/auth/me', {}, userCookie);
+assert.equal(currentStillValid.response.status, 200, 'revoke-others must preserve the current admin session');
+
 process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, MFA recovery codes, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');

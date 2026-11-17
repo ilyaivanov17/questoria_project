@@ -1039,3 +1039,19 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 700px) {
   .admin-mfa-regenerate-form, .admin-recovery-code-grid { grid-template-columns: 1fr; }
 }
+
+/* Super Admin session management */
+.admin-session-controls { margin: 13px 0 0 54px; padding-top: 12px; border-top: 1px solid #eff0f5; }
+.admin-session-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-session-list { display: grid; gap: 9px; margin-top: 12px; }
+.admin-session-reason { max-width: 460px; }
+.admin-session-reason input { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid #dfe1eb; border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; }
+.admin-session-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.admin-session-row > div { display: grid; gap: 4px; min-width: 0; }
+.admin-session-row strong { font-size: 12px; }
+.admin-session-row span, .admin-session-row small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.admin-current-session { flex: 0 0 auto; color: #267653 !important; font-weight: 800; }
+@media (max-width: 620px) {
+  .admin-session-controls { margin-left: 0; }
+  .admin-session-row { align-items: flex-start; flex-direction: column; }
+}

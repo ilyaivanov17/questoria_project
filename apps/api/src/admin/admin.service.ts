@@ -621,6 +621,130 @@ export class AdminService {
     }, { isolationLevel: 'Serializable' });
   }
 
+  async listUserSessions(actor: AuthenticatedUser, targetUserId: string): Promise<object> {
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, emailNormalized: true, status: true },
+    });
+    if (!target) throw new NotFoundException('User not found.');
+
+    const now = new Date();
+    const sessions = await this.prisma.session.findMany({
+      where: { userId: targetUserId, expiresAt: { gt: now } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, createdAt: true, expiresAt: true, mfaVerifiedAt: true },
+    });
+
+    return {
+      userId: target.id,
+      email: target.emailNormalized,
+      status: target.status,
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+        mfaVerified: Boolean(session.mfaVerifiedAt),
+        isCurrent: session.id === actor.sessionId,
+      })),
+    };
+  }
+
+  async revokeUserSession(
+    actor: AuthenticatedUser,
+    targetUserId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<object> {
+    if (actor.userId === targetUserId && actor.sessionId === sessionId) {
+      throw new ForbiddenException('You cannot revoke the current session.');
+    }
+    const auditReason = reason.trim();
+    if (auditReason.length < 5) {
+      throw new BadRequestException('Provide a reason with at least five characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, emailNormalized: true },
+      });
+      if (!target) throw new NotFoundException('User not found.');
+
+      const now = new Date();
+      const session = await tx.session.findFirst({
+        where: { id: sessionId, userId: targetUserId, expiresAt: { gt: now } },
+        select: { id: true, createdAt: true, expiresAt: true },
+      });
+      if (!session) throw new NotFoundException('Active session not found.');
+
+      const deleted = await tx.session.deleteMany({
+        where: { id: sessionId, userId: targetUserId, expiresAt: { gt: now } },
+      });
+      if (deleted.count !== 1) throw new NotFoundException('Active session not found.');
+
+      await this.audit(
+        tx,
+        actor.userId,
+        'security.user_session.revoked',
+        'USER',
+        targetUserId,
+        { email: target.emailNormalized, sessionId, createdAt: session.createdAt },
+        { email: target.emailNormalized, sessionId, revoked: true },
+        auditReason,
+      );
+      return { userId: targetUserId, sessionId, revoked: true };
+    });
+  }
+
+  async revokeOtherUserSessions(
+    actor: AuthenticatedUser,
+    targetUserId: string,
+    reason: string,
+  ): Promise<object> {
+    const auditReason = reason.trim();
+    if (auditReason.length < 5) {
+      throw new BadRequestException('Provide a reason with at least five characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, emailNormalized: true },
+      });
+      if (!target) throw new NotFoundException('User not found.');
+
+      const now = new Date();
+      const isSelf = actor.userId === targetUserId;
+      const deleted = await tx.session.deleteMany({
+        where: {
+          userId: targetUserId,
+          expiresAt: { gt: now },
+          ...(isSelf ? { id: { not: actor.sessionId } } : {}),
+        },
+      });
+
+      if (deleted.count > 0) {
+        await this.audit(
+          tx,
+          actor.userId,
+          'security.user_sessions.revoked',
+          'USER',
+          targetUserId,
+          { email: target.emailNormalized, activeSessions: deleted.count },
+          { email: target.emailNormalized, revokedSessions: deleted.count, currentSessionPreserved: isSelf },
+          auditReason,
+        );
+      }
+
+      return {
+        userId: targetUserId,
+        email: target.emailNormalized,
+        revokedCount: deleted.count,
+        currentSessionPreserved: isSelf,
+      };
+    });
+  }
+
   async updateUserStatus(
     actor: AuthenticatedUser,
     targetUserId: string,
