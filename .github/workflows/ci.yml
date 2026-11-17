@@ -14,20 +14,6 @@ jobs:
   validate:
     name: Validate monorepo
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: questoria
-          POSTGRES_USER: questoria
-          POSTGRES_PASSWORD: questoria_local_only
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U questoria -d questoria"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     env:
       DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
       WEB_ORIGIN: http://localhost:3000
@@ -36,6 +22,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Start PostgreSQL
+        run: |
+          docker compose -f infra/docker/docker-compose.yml up -d postgres
+          for attempt in $(seq 1 30); do
+            if docker compose -f infra/docker/docker-compose.yml exec -T postgres pg_isready -U questoria -d questoria; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose -f infra/docker/docker-compose.yml logs postgres
+          exit 1
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -64,6 +62,22 @@ jobs:
       - name: Seed the demo quest
         run: pnpm db:seed
 
+      - name: Backup and restore PostgreSQL smoke test
+        run: |
+          set -euo pipefail
+          docker compose -f infra/docker/docker-compose.yml exec -T postgres createdb -U questoria questoria_restore_check
+          pnpm run db:backup -- /tmp/questoria-ci.dump
+          ALLOW_DATABASE_RESTORE=1 DATABASE_URL="postgresql://questoria:questoria_local_only@localhost:5432/questoria_restore_check?schema=public" pnpm run db:restore -- /tmp/questoria-ci.dump --confirm-database questoria_restore_check
+          source_counts="$(docker compose -f infra/docker/docker-compose.yml exec -T postgres psql -U questoria -d questoria -Atqc "SELECT (SELECT COUNT(*) FROM quests)::text || ':' || (SELECT COUNT(*) FROM categories)::text || ':' || (SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL)::text")"
+          restored_counts="$(docker compose -f infra/docker/docker-compose.yml exec -T postgres psql -U questoria -d questoria_restore_check -Atqc "SELECT (SELECT COUNT(*) FROM quests)::text || ':' || (SELECT COUNT(*) FROM categories)::text || ':' || (SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL)::text")"
+          test "$source_counts" = "$restored_counts"
+          echo "PostgreSQL backup/restore verified: $restored_counts"
+
+      - name: Remove restore test database
+        if: always()
+        run: |
+          docker compose -f infra/docker/docker-compose.yml exec -T postgres dropdb -U questoria --if-exists --force questoria_restore_check || true
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -89,3 +103,7 @@ jobs:
           if [ -f /tmp/questoria-api.pid ]; then
             kill "$(cat /tmp/questoria-api.pid)" || true
           fi
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.yml down --volumes --remove-orphans
