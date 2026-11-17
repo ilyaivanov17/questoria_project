@@ -63,6 +63,7 @@ model User {
   publishedVersions QuestVersion[] @relation("QuestVersionPublisher")
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
+  mfaRecoveryCodes MfaRecoveryCode[]
   auditLogs AdminAuditLog[]
 
   @@map("users")
@@ -90,6 +91,17 @@ model PasswordResetToken {
 
   @@index([userId, expiresAt])
   @@map("password_reset_tokens")
+}
+
+model MfaRecoveryCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  codeHash  String   @unique @map("code_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("mfa_recovery_codes")
 }
 
 model Profile {

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { createTotpCode } from '../apps/api/dist/admin/totp.js';
 
 const apiBase = process.env.API_BASE_URL ?? 'http://127.0.0.1:4000';
 const demoQuestSlug = 'mystery-of-the-missing-number';
@@ -411,4 +413,88 @@ const otherCookie = extractCookie(secondLogin.response);
 const forbiddenRun = await request('/api/v1/runs/' + runId, {}, otherCookie);
 assert.equal(forbiddenRun.response.status, 404, 'users must not access another profile run');
 
-process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');
+const roleGrant = spawnSync(
+  'pnpm',
+  ['--filter', '@questoria/api', 'admin:grant-role', email, 'SUPER_ADMIN'],
+  {
+    encoding: 'utf8',
+    env: { ...process.env, QUESTORIA_ALLOW_ROLE_GRANT: '1' },
+  },
+);
+assert.equal(
+  roleGrant.status,
+  0,
+  'explicit bootstrap role grant should succeed: ' + String(roleGrant.stderr ?? ''),
+);
+
+const adminIdentity = await request('/api/v1/admin/me', {}, userCookie);
+assert.equal(adminIdentity.response.status, 200);
+assert.ok(adminIdentity.body?.user?.roleKeys?.includes('SUPER_ADMIN'));
+
+const adminOriginHeaders = {
+  Origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+  'Content-Type': 'application/json',
+};
+const mfaSetup = await request('/api/v1/admin/mfa/setup', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+}, userCookie);
+assert.equal(mfaSetup.response.status, 201);
+assert.ok(mfaSetup.body?.secret);
+
+const totpCode = createTotpCode(mfaSetup.body.secret);
+const enabledMfa = await request('/api/v1/admin/mfa/verify', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: totpCode }),
+}, userCookie);
+assert.equal(enabledMfa.response.status, 201);
+assert.equal(enabledMfa.body?.recoveryCodes?.length, 10);
+assert.equal(enabledMfa.body?.recoveryCodesRemaining, 10);
+const firstRecoveryBatch = enabledMfa.body.recoveryCodes;
+
+const recoveryStatus = await request('/api/v1/admin/mfa/recovery-codes/status', {}, userCookie);
+assert.equal(recoveryStatus.response.status, 200);
+assert.equal(recoveryStatus.body.remaining, 10);
+
+const consumeRecovery = await request('/api/v1/admin/mfa/recovery-codes/use', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: firstRecoveryBatch[0] }),
+}, userCookie);
+assert.equal(consumeRecovery.response.status, 201);
+assert.equal(consumeRecovery.body.verified, true);
+assert.equal(consumeRecovery.body.remaining, 9);
+
+const reusedRecovery = await request('/api/v1/admin/mfa/recovery-codes/use', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: firstRecoveryBatch[0] }),
+}, userCookie);
+assert.equal(reusedRecovery.response.status, 401, 'a recovery code must only work once');
+
+const refreshedCodes = await request('/api/v1/admin/mfa/recovery-codes/regenerate', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: createTotpCode(mfaSetup.body.secret) }),
+}, userCookie);
+assert.equal(refreshedCodes.response.status, 201);
+assert.equal(refreshedCodes.body.codes.length, 10);
+assert.equal(refreshedCodes.body.remaining, 10);
+
+const revokedOldCode = await request('/api/v1/admin/mfa/recovery-codes/use', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: firstRecoveryBatch[1] }),
+}, userCookie);
+assert.equal(revokedOldCode.response.status, 401, 'regeneration must revoke every previous code');
+
+const consumeFreshCode = await request('/api/v1/admin/mfa/recovery-codes/use', {
+  method: 'POST',
+  headers: adminOriginHeaders,
+  body: JSON.stringify({ code: refreshedCodes.body.codes[0] }),
+}, userCookie);
+assert.equal(consumeFreshCode.response.status, 201);
+assert.equal(consumeFreshCode.body.remaining, 9);
+
+process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, MFA recovery codes, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');

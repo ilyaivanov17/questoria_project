@@ -1026,3 +1026,16 @@ a { color: inherit; text-decoration: none; }
   .admin-user-management { grid-template-columns: 1fr; }
   .admin-user-actions { grid-column: auto; }
 }
+
+
+/* MFA recovery codes */
+.admin-mfa-recovery-panel { border-color: #dcd8fb; }
+.admin-mfa-regenerate-form { grid-template-columns: minmax(220px, 1fr) auto; align-items: end; }
+.admin-mfa-recovery-login { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.admin-recovery-codes { display: grid; gap: 14px; margin-top: 20px; padding: 18px; border: 1px dashed #bdb5f2; border-radius: 15px; background: #faf9ff; }
+.admin-recovery-codes p { margin: 0; }
+.admin-recovery-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.admin-recovery-code-grid code { padding: 10px 12px; border: 1px solid #e5e2fa; border-radius: 9px; background: #fff; color: var(--ink); font-size: 13px; font-weight: 800; letter-spacing: .7px; text-align: center; }
+@media (max-width: 700px) {
+  .admin-mfa-regenerate-form, .admin-recovery-code-grid { grid-template-columns: 1fr; }
+}
