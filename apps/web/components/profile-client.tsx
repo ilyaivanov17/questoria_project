@@ -47,10 +47,9 @@ interface WalletData {
   entries: WalletEntry[];
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 async function fetchJson(path: string, options: RequestInit = {}) {
-  const response = await fetch(`${apiBase}/api/v1${path}`, {
+  const response = await fetch(`/api/v1${path}`, {
     ...options,
     credentials: 'include',
     cache: 'no-store',

@@ -7,7 +7,6 @@ interface StartQuestButtonProps {
   slug: string;
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export function StartQuestButton({ slug }: StartQuestButtonProps) {
   const router = useRouter();
@@ -19,7 +18,7 @@ export function StartQuestButton({ slug }: StartQuestButtonProps) {
     setError('');
 
     try {
-      const response = await fetch(`${apiBase}/api/v1/runs`, {
+      const response = await fetch(`/api/v1/runs`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

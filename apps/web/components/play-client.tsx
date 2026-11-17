@@ -37,7 +37,6 @@ interface RunState {
   } | null;
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export function PlayClient({ runId }: { runId: string }) {
   const router = useRouter();
@@ -55,7 +54,7 @@ export function PlayClient({ runId }: { runId: string }) {
   const loadRun = useCallback(async () => {
     setError('');
     try {
-      const response = await fetch(`${apiBase}/api/v1/runs/${runId}`, {
+      const response = await fetch(`/api/v1/runs/${runId}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -141,7 +140,7 @@ export function PlayClient({ runId }: { runId: string }) {
 
     try {
       const response = await fetch(
-        `${apiBase}/api/v1/runs/${run.id}/puzzles/${run.currentPuzzle.id}/attempts`,
+        `/api/v1/runs/${run.id}/puzzles/${run.currentPuzzle.id}/attempts`,
         {
           method: 'POST',
           credentials: 'include',
@@ -183,7 +182,7 @@ export function PlayClient({ runId }: { runId: string }) {
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`${apiBase}/api/v1/runs`, {
+      const response = await fetch(`/api/v1/runs`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
