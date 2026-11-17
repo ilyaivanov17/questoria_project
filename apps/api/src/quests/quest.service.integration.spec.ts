@@ -83,6 +83,7 @@ test(
       include: { profile: true },
     });
     userId = user.id;
+    assert.ok(user.profile, 'the integration fixture must create a profile');
     profileId = user.profile.id;
 
     const category = await prisma.category.create({
