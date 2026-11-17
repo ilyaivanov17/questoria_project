@@ -14,7 +14,7 @@ Questoria — образовательная игровая платформа �
 - `apps/api/` — NestJS backend.
 - `packages/contracts/` — общие TypeScript-контракты.
 - `prisma/` — схема PostgreSQL и миграции.
-- `docs/ADR/` — принятые архитектурные решения.
+- `docs/ADR/` — принятые архитектурные решения (ADR-009–011).
 - `infra/` — локальная инфраструктура.
 
 ## Технологическая база
@@ -94,8 +94,10 @@ pnpm test
 pnpm build
 ```
 
-CI additionally applies database migrations, seeds the demo quest, starts the API and runs `scripts/smoke.mjs`. Smoke test verifies registration, session cookie handling, quest persistence, answer validation, idempotent retries, result recovery after login and ownership isolation.
+CI дополнительно применяет миграции PostgreSQL, загружает seed-квест, запускает API и выполняет `scripts/smoke.mjs`. Smoke test проверяет регистрацию, cookie sessions, сохранение прохождения, серверную проверку ответов, идемпотентные повторы, восстановление результата после входа, начисление XP/монет, запрет повторного фарминга наград и изоляцию чужих профилей.
 
-**Ограничение:** это development MVP, не публичный production-релиз. Пока нет подтверждения email, восстановления пароля, CMS, XP/coin ledger, административных ролей и законченных юридических/privacy-процессов для беты. До публичного запуска необходимо закрыть эти требования и провести security/privacy review.
+Профиль доступен по адресу `/profile`. API кошелька: `GET /api/v1/me/wallet`; баланс вычисляется из append-only `wallet_ledger`. Награды за первое прохождение демонстрационной версии: 40 XP и 15 монет (уровень + квест + итоговое задание).
 
-Архитектурные решения: [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md) и [ADR-010](docs/ADR/010-runtime-and-toolchain.md).
+**Ограничение:** это development MVP, не публичный production-релиз. Пока нет подтверждения email, восстановления пароля, CMS, административного RBAC/MFA, дополнительных типов головоломок, трат/косметического магазина и законченных юридических/privacy-процессов для беты. До публичного запуска необходимо закрыть эти требования и провести security/privacy review.
+
+Архитектурные решения: [ADR-009](docs/ADR/009-monorepo-in-existing-repository.md), [ADR-010](docs/ADR/010-runtime-and-toolchain.md) и [ADR-011](docs/ADR/011-wallet-ledger-and-rewards.md).
