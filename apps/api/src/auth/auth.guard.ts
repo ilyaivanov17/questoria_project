@@ -52,6 +52,7 @@ export class AuthGuard implements CanActivate {
       !session ||
       session.expiresAt <= new Date() ||
       session.user.status !== 'ACTIVE' ||
+      !session.user.emailVerifiedAt ||
       !session.user.profile
     ) {
       throw new UnauthorizedException('Your session has expired. Please sign in again.');

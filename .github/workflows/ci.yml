@@ -31,6 +31,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
       WEB_ORIGIN: http://localhost:3000
+      EMAIL_PROVIDER: console
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,6 +78,8 @@ jobs:
           echo "$!" > /tmp/questoria-api.pid
 
       - name: End-to-end smoke test
+        env:
+          API_LOG_FILE: /tmp/questoria-api.log
         run: node scripts/smoke.mjs
 
       - name: Stop API

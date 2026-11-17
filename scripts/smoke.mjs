@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 const apiBase = process.env.API_BASE_URL ?? 'http://127.0.0.1:4000';
@@ -28,9 +29,41 @@ async function request(path, options = {}, cookie = undefined) {
 
 function extractCookie(response) {
   const setCookie = response.headers.get('set-cookie');
-  assert.ok(setCookie, 'registration/login must set a session cookie');
+  assert.ok(setCookie, 'login must set a session cookie');
   assert.match(setCookie, /HttpOnly/i, 'session cookie must be HttpOnly');
   return setCookie.split(';', 1)[0];
+}
+
+async function waitForEmailLinks(email, kind, minimum = 1) {
+  const logFile = process.env.API_LOG_FILE ?? '/tmp/questoria-api.log';
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const log = await readFile(logFile, 'utf8').catch(() => '');
+    const messages = [];
+
+    for (const line of log.split('\n')) {
+      const marker = 'QUESTORIA_EMAIL ';
+      const markerIndex = line.indexOf(marker);
+      if (markerIndex < 0) continue;
+      try {
+        const message = JSON.parse(line.slice(markerIndex + marker.length));
+        if (message.email === email && message.kind === kind && typeof message.url === 'string') {
+          messages.push(message);
+        }
+      } catch {
+        // Ignore unrelated or partially written log lines.
+      }
+    }
+
+    if (messages.length >= minimum) return messages;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('Timed out waiting for ' + kind + ' email for ' + email + '.');
+}
+
+function tokenFromMessage(message) {
+  const token = new URL(message.url).searchParams.get('token');
+  assert.ok(token, 'email action URL must contain a token');
+  return token;
 }
 
 async function submit(runId, puzzle, answer, cookie) {
@@ -68,9 +101,39 @@ const registration = await request('/api/v1/auth/register', {
   body: JSON.stringify({ email, password, nickname: 'Smoke Tester' }),
 });
 assert.equal(registration.response.status, 201);
-assert.ok(registration.body?.user?.id);
-let userCookie = extractCookie(registration.response);
-assert.equal('token' in registration.body, false, 'raw session token must not be returned in JSON');
+assert.equal(registration.body?.emailSent, true);
+assert.equal(registration.response.headers.get('set-cookie'), null, 'pending accounts must not receive a session');
+assert.equal('token' in (registration.body ?? {}), false, 'email tokens must not be returned in JSON');
+
+const verificationMessage = (await waitForEmailLinks(email, 'verification'))[0];
+const verificationToken = tokenFromMessage(verificationMessage);
+const unverifiedLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+});
+assert.equal(unverifiedLogin.response.status, 403, 'unverified accounts must not sign in');
+
+const verified = await request('/api/v1/auth/verify-email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: verificationToken }),
+});
+assert.equal(verified.response.status, 200);
+const reusedVerification = await request('/api/v1/auth/verify-email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: verificationToken }),
+});
+assert.equal(reusedVerification.response.status, 403, 'verification tokens must be single-use');
+
+const initialLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+});
+assert.equal(initialLogin.response.status, 200);
+let userCookie = extractCookie(initialLogin.response);
 
 const me = await request('/api/v1/auth/me', {}, userCookie);
 assert.equal(me.response.status, 200);
@@ -260,15 +323,92 @@ const walletAfterReplay = await request('/api/v1/me/wallet', {}, userCookie);
 assert.equal(walletAfterReplay.body.balances.xp, 40);
 assert.equal(walletAfterReplay.body.balances.coins, 15);
 
-const secondEmail = `smoke-${randomUUID()}@questoria.test`;
+const forgot = await request('/api/v1/auth/forgot-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email }),
+});
+assert.equal(forgot.response.status, 202);
+const unknownForgot = await request('/api/v1/auth/forgot-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'missing-' + randomUUID() + '@questoria.test' }),
+});
+assert.equal(unknownForgot.response.status, 202);
+assert.deepEqual(unknownForgot.body, forgot.body, 'password reset must not disclose whether an email exists');
+
+const resetMessage = (await waitForEmailLinks(email, 'password-reset'))[0];
+const resetToken = tokenFromMessage(resetMessage);
+const newPassword = 'Questoria-new-password-2026';
+const reset = await request('/api/v1/auth/reset-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: resetToken, password: newPassword }),
+});
+assert.equal(reset.response.status, 200);
+
+const revokedSession = await request('/api/v1/auth/me', {}, userCookie);
+assert.equal(revokedSession.response.status, 401, 'password reset must revoke every session');
+const reusedReset = await request('/api/v1/auth/reset-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: resetToken, password: 'Another-new-password-2026' }),
+});
+assert.equal(reusedReset.response.status, 403, 'password reset tokens must be single-use');
+
+const oldPasswordLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+});
+assert.equal(oldPasswordLogin.response.status, 401);
+const newPasswordLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password: newPassword }),
+});
+assert.equal(newPasswordLogin.response.status, 200);
+userCookie = extractCookie(newPasswordLogin.response);
+
+const secondEmail = 'smoke-' + randomUUID() + '@questoria.test';
 const secondUser = await request('/api/v1/auth/register', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ email: secondEmail, password, nickname: 'Another User' }),
 });
 assert.equal(secondUser.response.status, 201);
-const otherCookie = extractCookie(secondUser.response);
-const forbiddenRun = await request(`/api/v1/runs/${runId}`, {}, otherCookie);
+assert.equal(secondUser.body?.emailSent, true);
+
+const resend = await request('/api/v1/auth/resend-verification', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: secondEmail }),
+});
+assert.equal(resend.response.status, 202);
+const secondVerificationMessages = await waitForEmailLinks(secondEmail, 'verification', 2);
+const firstSecondUserToken = tokenFromMessage(secondVerificationMessages[0]);
+const latestSecondUserToken = tokenFromMessage(secondVerificationMessages[secondVerificationMessages.length - 1]);
+const staleVerification = await request('/api/v1/auth/verify-email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: firstSecondUserToken }),
+});
+assert.equal(staleVerification.response.status, 403, 'resending must invalidate earlier verification links');
+
+const secondVerified = await request('/api/v1/auth/verify-email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: latestSecondUserToken }),
+});
+assert.equal(secondVerified.response.status, 200);
+const secondLogin = await request('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: secondEmail, password }),
+});
+assert.equal(secondLogin.response.status, 200);
+const otherCookie = extractCookie(secondLogin.response);
+const forbiddenRun = await request('/api/v1/runs/' + runId, {}, otherCookie);
 assert.equal(forbiddenRun.response.status, 404, 'users must not access another profile run');
 
-process.stdout.write('Questoria E2E smoke test passed: auth, five puzzle types, private answer validation, replay protection, XP/coin ledger, profile and ownership.\n');
+process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');
