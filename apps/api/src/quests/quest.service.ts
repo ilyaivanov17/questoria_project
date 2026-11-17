@@ -268,7 +268,7 @@ export class QuestService {
         },
       },
     });
-    if (duplicate) return this.validateAndReturnDuplicate(duplicate, profileId, runId, puzzleId, dto);
+    if (duplicate) return this.validateAndReturnDuplicate(duplicate, runId, puzzleId, dto);
 
     const run = await this.prisma.questRun.findFirst({
       where: { id: runId, profileId },
