@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QuestModule } from './quests/quest.module.js';
+import { ProfileModule } from './profile/profile.module.js';
 import { AppController } from './app.controller.js';
 
 @Module({
@@ -11,6 +12,7 @@ import { AppController } from './app.controller.js';
     PrismaModule,
     AuthModule,
     QuestModule,
+    ProfileModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
   ],
   controllers: [AppController],
