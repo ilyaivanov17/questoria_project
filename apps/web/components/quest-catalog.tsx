@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { matchesDuration, missionCountLabel } from '../lib/catalog-utils.mjs';
 
 interface QuestCard {
   slug: string;
@@ -39,22 +40,6 @@ function difficultyKey(value: string): string {
   if (normalized.includes('сред') || normalized === 'intermediate') return 'intermediate';
   if (normalized.includes('продв') || normalized === 'advanced') return 'advanced';
   return normalized;
-}
-
-function missionCountLabel(count: number): string {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'миссий';
-  if (last === 1) return 'миссия';
-  if (last >= 2 && last <= 4) return 'миссии';
-  return 'миссий';
-}
-
-function matchesDuration(durationMin: number, duration: string): boolean {
-  if (duration === 'quick') return durationMin <= 10;
-  if (duration === 'standard') return durationMin > 10 && durationMin <= 20;
-  if (duration === 'long') return durationMin > 20;
-  return true;
 }
 
 export function QuestCatalog({ categories }: { categories: Category[] }) {
