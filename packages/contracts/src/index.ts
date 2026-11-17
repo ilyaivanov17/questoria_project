@@ -40,3 +40,8 @@ export interface PuzzleAttemptResponse {
   /** Present only after an incorrect final attempt for this puzzle. */
   review?: PuzzleAnswerReview;
 }
+
+export interface RunPuzzleReview extends PuzzleAnswerReview {
+  puzzleId: string;
+  prompt: string;
+}

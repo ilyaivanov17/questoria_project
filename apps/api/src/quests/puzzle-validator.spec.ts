@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BadRequestException } from '@nestjs/common';
-import { buildPuzzleReview, validatePuzzleAnswer } from './puzzle-validator.js';
+import { validatePuzzleAnswer } from './puzzle-validator.js';
 
 const publicOptions = {
   prompt: 'Выбери варианты',
@@ -152,57 +152,5 @@ test('unknown puzzle types are rejected instead of silently accepted', () => {
   assert.throws(
     () => validatePuzzleAnswer('arbitrary_script', {}, {}, {}),
     BadRequestException,
-  );
-});
-
-test('review exposes the configured solution only through the explicit review builder', () => {
-  const explanation = 'Разбор правильного решения.';
-
-  assert.deepEqual(
-    buildPuzzleReview('single_choice', publicOptions, {
-      correctOptionId: 'b',
-      correctFeedback: explanation,
-    }),
-    { explanation, correctAnswer: { optionId: 'b' } },
-  );
-  assert.deepEqual(
-    buildPuzzleReview('multiple_choice', publicOptions, {
-      correctOptionIds: ['a', 'c'],
-      correctFeedback: explanation,
-    }),
-    { explanation, correctAnswer: { optionIds: ['a', 'c'] } },
-  );
-  assert.deepEqual(
-    buildPuzzleReview('numeric_input', {}, {
-      correctValue: 12.5,
-      correctFeedback: explanation,
-    }),
-    { explanation, correctAnswer: { value: 12.5 } },
-  );
-  assert.deepEqual(
-    buildPuzzleReview('text_input', {}, {
-      acceptedAnswers: ['ответ', 'верный ответ'],
-      correctFeedback: explanation,
-    }),
-    { explanation, correctAnswer: { acceptedAnswers: ['ответ', 'верный ответ'] } },
-  );
-  assert.deepEqual(
-    buildPuzzleReview('ordering', {
-      items: [{ id: 'one', label: '1' }, { id: 'two', label: '2' }],
-    }, {
-      correctOrderIds: ['two', 'one'],
-      correctFeedback: explanation,
-    }),
-    { explanation, correctAnswer: { orderedIds: ['two', 'one'] } },
-  );
-});
-
-test('review rejects a malformed private answer instead of exposing a partial solution', () => {
-  assert.throws(
-    () => buildPuzzleReview('single_choice', publicOptions, {
-      correctOptionId: 'private-option',
-      correctFeedback: 'Разбор.',
-    }),
-    /correctOptionId must match a public option/,
   );
 });

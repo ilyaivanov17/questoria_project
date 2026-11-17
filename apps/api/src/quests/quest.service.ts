@@ -189,6 +189,32 @@ export class QuestService {
 
     if (!run) throw new NotFoundException('Quest run not found.');
 
+    // Older releases marked a run ABANDONED as soon as one puzzle exhausted
+    // its attempts. Such runs are resumable: the new state machine treats that
+    // puzzle as reviewed and advances to the next unresolved puzzle.
+    if (run.status === 'ABANDONED') {
+      const reopenedAt = new Date();
+      const reopened = await this.prisma.questRun.updateMany({
+        where: { id: run.id, profileId, status: 'ABANDONED' },
+        data: { status: 'IN_PROGRESS', completedAt: null, lastActivityAt: reopenedAt },
+      });
+      if (reopened.count === 1) {
+        run.status = 'IN_PROGRESS';
+        run.completedAt = null;
+        run.lastActivityAt = reopenedAt;
+      } else {
+        const currentState = await this.prisma.questRun.findUnique({
+          where: { id: run.id },
+          select: { status: true, completedAt: true, lastActivityAt: true },
+        });
+        if (currentState) {
+          run.status = currentState.status;
+          run.completedAt = currentState.completedAt;
+          run.lastActivityAt = currentState.lastActivityAt;
+        }
+      }
+    }
+
     const puzzles = run.questVersion.levels.flatMap((level) =>
       level.puzzles.map((puzzle) => ({ level, puzzle })),
     );
@@ -255,8 +281,10 @@ export class QuestService {
       const balances = new Map(
         rewardEntries.map((entry) => [entry.currency, entry._sum.amount ?? 0]),
       );
+      const everyPuzzleSolvedCorrectly = puzzles.length > 0
+        && puzzles.every(({ puzzle }) => completedPuzzleIds.has(puzzle.id));
       result = {
-        success: run.status === 'COMPLETED',
+        success: run.status === 'COMPLETED' && everyPuzzleSolvedCorrectly,
         score: run.attempts.reduce((sum, attempt) => sum + attempt.score, 0),
         attempts: run.attempts.length,
         completedLevels: run.levelProgress.filter((progress) => progress.status === 'COMPLETED').length,

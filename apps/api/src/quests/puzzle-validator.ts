@@ -79,7 +79,6 @@ function setEquals(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((item) => right.includes(item));
 }
 
-
 /**
  * Creates the safe review payload shown only after the learner has used every
  * allowed attempt. The regular public quest/run serializers must never call it.
