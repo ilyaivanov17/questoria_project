@@ -80,7 +80,7 @@ if [[ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
   exit 1
 fi
 
-cat "$ARCHIVE" | "${compose[@]}" exec -T postgres pg_restore --list - >/dev/null
+cat "$ARCHIVE" | "${compose[@]}" exec -T postgres pg_restore --list >/dev/null
 echo "Restoring into '$DB_NAME'. Objects included in the archive may be replaced."
 cat "$ARCHIVE" | "${compose[@]}" exec -T postgres sh -c \
   'pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error --username="$POSTGRES_USER" --dbname="$1" -' \

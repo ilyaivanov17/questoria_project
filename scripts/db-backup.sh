@@ -68,7 +68,7 @@ if [[ ! -s "$OUTPUT" ]]; then
   echo "pg_dump produced an empty archive." >&2
   exit 1
 fi
-cat "$OUTPUT" | "${compose[@]}" exec -T postgres pg_restore --list - >/dev/null
+cat "$OUTPUT" | "${compose[@]}" exec -T postgres pg_restore --list >/dev/null
 shasum -a 256 "$OUTPUT" | awk '{print $1}' > "$OUTPUT.sha256"
 chmod 600 "$OUTPUT" "$OUTPUT.sha256"
 trap - EXIT
