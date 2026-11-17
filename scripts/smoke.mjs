@@ -34,10 +34,10 @@ function extractCookie(response) {
   assert.ok(setCookie, 'login must set a session cookie');
   assert.match(setCookie, /HttpOnly/i, 'session cookie must be HttpOnly');
   assert.match(setCookie, /SameSite=Lax/i, 'session cookie must use SameSite=Lax');
-  assert.match(setCookie, /(?:^|;\\s*)Path=\\//i, 'session cookie must be scoped to the application root');
-  assert.match(setCookie, /(?:^|;\\s*)Max-Age=604800(?:;|$)/i, 'session cookie must have the configured seven-day lifetime');
+  assert.match(setCookie, /(?:^|;\s*)Path=\//i, 'session cookie must be scoped to the application root');
+  assert.match(setCookie, /(?:^|;\s*)Max-Age=604800(?:;|$)/i, 'session cookie must have the configured seven-day lifetime');
   if (process.env.NODE_ENV === 'production') {
-    assert.match(setCookie, /(?:^|;\\s*)Secure(?:;|$)/i, 'production session cookies must require HTTPS');
+    assert.match(setCookie, /(?:^|;\s*)Secure(?:;|$)/i, 'production session cookies must require HTTPS');
   }
   return setCookie.split(';', 1)[0];
 }
