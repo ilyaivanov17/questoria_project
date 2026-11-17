@@ -3,10 +3,13 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { assertProductionEnvironment } from './config/production-env.js';
 import { getWebOrigin } from './config/web-origin.js';
 import { requestContextMiddleware } from './request-context.js';
 
 async function bootstrap(): Promise<void> {
+  assertProductionEnvironment();
+
   const app = await NestFactory.create(AppModule);
 
   app.use(requestContextMiddleware);
