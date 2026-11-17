@@ -33,6 +33,16 @@ enum QuestRunStatus {
   ABANDONED
 }
 
+enum LevelProgressStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum WalletCurrency {
+  XP
+  COIN
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   emailNormalized String     @unique @map("email_normalized")
@@ -59,6 +69,8 @@ model Profile {
   user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
   questRuns      QuestRun[]
   puzzleAttempts PuzzleAttempt[]
+  walletEntries   WalletLedger[]
+  completions     QuestCompletion[]
 
   @@map("profiles")
 }
@@ -143,6 +155,7 @@ model QuestVersion {
   quest       Quest              @relation(fields: [questId], references: [id], onDelete: Restrict)
   levels      Level[]
   runs        QuestRun[]
+  completions QuestCompletion[]
   createdAt   DateTime           @default(now()) @map("created_at")
 
   @@unique([questId, versionNo])
@@ -158,6 +171,7 @@ model Level {
   intro          String
   questVersion   QuestVersion @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
   puzzles        Puzzle[]
+  progress       LevelProgress[]
 
   @@unique([questVersionId, orderNo])
   @@map("levels")
@@ -203,6 +217,8 @@ model QuestRun {
   profile         Profile        @relation(fields: [profileId], references: [id], onDelete: Restrict)
   questVersion    QuestVersion   @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
   attempts        PuzzleAttempt[]
+  levelProgress   LevelProgress[]
+  completion      QuestCompletion?
 
   @@index([profileId, status])
   @@index([questVersionId])
@@ -228,4 +244,55 @@ model PuzzleAttempt {
   @@unique([profileId, attemptKey])
   @@index([questRunId, puzzleId, createdAt])
   @@map("puzzle_attempts")
+}
+
+model LevelProgress {
+  id          String              @id @default(uuid()) @db.Uuid
+  questRunId  String              @db.Uuid @map("quest_run_id")
+  levelId     String              @db.Uuid @map("level_id")
+  status      LevelProgressStatus @default(COMPLETED)
+  score       Int                 @default(0)
+  startedAt   DateTime?           @map("started_at")
+  completedAt DateTime?           @default(now()) @map("completed_at")
+  questRun    QuestRun            @relation(fields: [questRunId], references: [id], onDelete: Restrict)
+  level       Level               @relation(fields: [levelId], references: [id], onDelete: Restrict)
+
+  @@unique([questRunId, levelId])
+  @@index([levelId, status])
+  @@map("level_progress")
+}
+
+model QuestCompletion {
+  id             String       @id @default(uuid()) @db.Uuid
+  profileId      String       @db.Uuid @map("profile_id")
+  questVersionId String       @db.Uuid @map("quest_version_id")
+  questRunId     String       @unique @db.Uuid @map("quest_run_id")
+  score          Int          @default(0)
+  xpAwarded      Int          @default(0) @map("xp_awarded")
+  coinsAwarded   Int          @default(0) @map("coins_awarded")
+  completedAt    DateTime     @default(now()) @map("completed_at")
+  profile        Profile      @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  questVersion   QuestVersion @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
+  questRun       QuestRun     @relation(fields: [questRunId], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, questVersionId])
+  @@index([profileId, completedAt])
+  @@map("quest_completions")
+}
+
+model WalletLedger {
+  id             String        @id @default(uuid()) @db.Uuid
+  profileId      String        @db.Uuid @map("profile_id")
+  currency       WalletCurrency
+  amount         Int
+  reason         String
+  sourceType     String        @map("source_type")
+  sourceId       String        @map("source_id")
+  idempotencyKey String        @unique @map("idempotency_key")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@index([profileId, createdAt])
+  @@index([sourceType, sourceId])
+  @@map("wallet_ledger")
 }
