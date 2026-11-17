@@ -30,7 +30,7 @@ function csvCell(value: unknown): string {
   const raw = value === null || value === undefined
     ? ''
     : typeof value === 'string' ? value : JSON.stringify(value);
-  const safe = /^[\\u0000-\\u0020]*[=+\\-@]/.test(raw) ? "'" + raw : raw;
+  const safe = /^\s*[=+\-@]/.test(raw) ? "'" + raw : raw;
   return '"' + safe.replace(/"/g, '""') + '"';
 }
 type ManagedUser = {
@@ -670,7 +670,7 @@ export function AdminClient() {
       <form className="admin-form admin-audit-filters" onSubmit={(event) => { event.preventDefault(); void loadAuditPage(0); }}>
         <label className="field admin-audit-search"><span>Поиск по журналу</span><input type="search" value={auditSearch} onChange={(event) => setAuditSearch(event.target.value)} placeholder="Событие, email, ID объекта или причина"/></label>
         <label className="field"><span>Тип события</span><input value={auditAction} onChange={(event) => setAuditAction(event.target.value)} placeholder="Например security.mfa"/></label>
-        <label className="field"><span>Пользователь (email)</span><input type="email" value={auditActor} onChange={(event) => setAuditActor(event.target.value)} placeholder="admin@example.com"/></label>
+        <label className="field"><span>Пользователь (email)</span><input type="search" value={auditActor} onChange={(event) => setAuditActor(event.target.value)} placeholder="admin@example.com"/></label>
         <label className="field"><span>Тип объекта</span>
           <select value={auditEntityType} onChange={(event) => setAuditEntityType(event.target.value)}>
             <option value="">Все объекты</option><option value="USER">Пользователь</option><option value="QUEST">Квест</option><option value="CATEGORY">Рубрика</option>
