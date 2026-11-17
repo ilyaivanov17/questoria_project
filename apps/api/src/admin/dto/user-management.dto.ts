@@ -25,3 +25,9 @@ export class UpdateManagedUserStatusDto {
   @Length(5, 300)
   reason!: string;
 }
+
+export class RevokeUserSessionDto {
+  @IsString()
+  @Length(5, 300)
+  reason!: string;
+}

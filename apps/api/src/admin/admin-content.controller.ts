@@ -17,7 +17,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateQuestDto, UpdateQuestDto } from './dto/quest.dto.js';
-import { AssignUserRoleDto, RemoveUserRoleDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
+import { AssignUserRoleDto, RemoveUserRoleDto, RevokeUserSessionDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
 import { Roles } from './roles.decorator.js';
@@ -168,6 +168,36 @@ export class AdminContentController {
     @Body() dto: UpdateManagedUserStatusDto,
   ): Promise<object> {
     return this.admin.updateUserStatus(request.authUser as AuthenticatedUser, id, dto.status, dto.reason);
+  }
+
+  @Get('users/:id/sessions')
+  @Roles('SUPER_ADMIN')
+  listUserSessions(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<object> {
+    return this.admin.listUserSessions(request.authUser as AuthenticatedUser, id);
+  }
+
+  @Delete('users/:id/sessions/:sessionId')
+  @Roles('SUPER_ADMIN')
+  revokeUserSession(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+    @Body() dto: RevokeUserSessionDto,
+  ): Promise<object> {
+    return this.admin.revokeUserSession(request.authUser as AuthenticatedUser, id, sessionId, dto.reason);
+  }
+
+  @Post('users/:id/sessions/revoke-others')
+  @Roles('SUPER_ADMIN')
+  revokeOtherUserSessions(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RevokeUserSessionDto,
+  ): Promise<object> {
+    return this.admin.revokeOtherUserSessions(request.authUser as AuthenticatedUser, id, dto.reason);
   }
 
   @Get('audit-logs')
