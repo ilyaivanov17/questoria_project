@@ -38,7 +38,7 @@ async function seed(): Promise<void> {
       `INSERT INTO quest_versions
        (id, quest_id, version_no, title, summary, objectives, age_min, age_max,
         difficulty, duration_min, locale, seo, status, published_at)
-       VALUES ($1, $2, 1, 'Тайна пропавшего числа',
+       VALUES ($1, $2, 2, 'Тайна пропавшего числа',
          'Пройди пять испытаний, чтобы раскрыть правило числового ряда и открыть шифрованную дверь.',
          $3::jsonb, 14, 99, 'Начальный', 12, 'ru',
          $4::jsonb, 'PUBLISHED', NOW())
