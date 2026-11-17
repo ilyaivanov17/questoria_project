@@ -27,9 +27,9 @@ function auditQueryString(filters: AuditFilters, take?: number, skip?: number): 
 }
 
 function csvCell(value: unknown): string {
-  const raw = value === null || value === undefined
+  const raw: string = value === null || value === undefined
     ? ''
-    : typeof value === 'string' ? value : JSON.stringify(value);
+    : typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
   const safe = /^\s*[=+\-@]/.test(raw) ? "'" + raw : raw;
   return '"' + safe.replace(/"/g, '""') + '"';
 }
@@ -416,7 +416,7 @@ export function AdminClient() {
         entry.beforeJson,
         entry.afterJson,
       ]);
-      const csv = '\\uFEFF' + [headers.map(csvCell).join(','), ...rows.map((row) => row.map(csvCell).join(','))].join('\\r\\n');
+      const csv = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map((row) => row.map(csvCell).join(','))].join('\r\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -692,7 +692,7 @@ export function AdminClient() {
             <time>{new Date(entry.createdAt).toLocaleString('ru-RU')}</time>
           </div>
           {entry.reason && <p className="admin-audit-reason">Причина: {entry.reason}</p>}
-          {(entry.beforeJson !== null || entry.afterJson !== null) && <details className="admin-audit-details">
+          {(entry.beforeJson != null || entry.afterJson != null) && <details className="admin-audit-details">
             <summary>Подробности изменения</summary>
             <pre>{JSON.stringify({ before: entry.beforeJson, after: entry.afterJson }, null, 2)}</pre>
           </details>}
