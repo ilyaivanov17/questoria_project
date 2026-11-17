@@ -21,7 +21,7 @@ const apiBase = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
 
 async function getPublicCategories(): Promise<HomeCategory[] | null> {
   try {
-    const response = await fetch(\`\${apiBase}/api/v1/public/categories\`, { cache: 'no-store' });
+    const response = await fetch(apiBase + '/api/v1/public/categories', { cache: 'no-store' });
     if (!response.ok) return null;
     const categories = (await response.json()) as HomeCategory[];
     return Array.isArray(categories) ? categories : null;
@@ -38,14 +38,6 @@ function difficultyLabel(value: string): string {
   return value;
 }
 
-function missionWord(count: number): string {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'миссий';
-  if (last === 1) return 'миссия';
-  if (last >= 2 && last <= 4) return 'миссии';
-  return 'миссий';
-}
 
 const foundations = [
   {
@@ -144,7 +136,7 @@ export default async function HomePage() {
         <div><strong>{categories === null ? '—' : totalQuests}</strong><span>опубликованных миссий</span></div>
         <div><strong>{categories === null ? '—' : categories.length}</strong><span>тематических направлений</span></div>
         <div><strong>5</strong><span>типов интерактивных задач</span></div>
-        <div><strong>∞</strong><span>способов проявить любопытство</span></div>
+        <div><strong>Свой</strong><span>темп исследования</span></div>
       </section>
 
       <section className="principles home-principles" id="how-it-works" aria-labelledby="principles-title">
