@@ -555,4 +555,28 @@ assert.equal(secondExtraDenied.response.status, 401, 'revoke-others must invalid
 const currentStillValid = await request('/api/v1/auth/me', {}, userCookie);
 assert.equal(currentStillValid.response.status, 200, 'revoke-others must preserve the current admin session');
 
+const auditQuery = new URLSearchParams({
+  take: '10',
+  action: 'security.user_session',
+  actor: email,
+  entityType: 'USER',
+});
+const filteredAudit = await request('/api/v1/admin/audit-logs?' + auditQuery.toString(), {}, userCookie);
+assert.equal(filteredAudit.response.status, 200);
+assert.ok(Array.isArray(filteredAudit.body.items));
+assert.ok(filteredAudit.body.total >= 2, 'filtered audit page must include the two session-revocation actions');
+assert.ok(filteredAudit.body.items.every((entry) => entry.action.includes('security.user_session')));
+assert.ok(filteredAudit.body.items.every((entry) => entry.actor?.emailNormalized === email));
+assert.ok(filteredAudit.body.items.some((entry) => entry.reason), 'session audit entries must include their reason');
+
+const auditExport = await request('/api/v1/admin/audit-logs/export?' + auditQuery.toString(), {}, userCookie);
+assert.equal(auditExport.response.status, 200);
+assert.ok(auditExport.body.exported >= 2);
+assert.equal(auditExport.body.truncated, false);
+assert.equal(JSON.stringify(auditExport.body).includes('tokenHash'), false, 'audit export must not expose session token hashes');
+assert.equal(JSON.stringify(auditExport.body).includes('passwordHash'), false, 'audit export must not expose password hashes');
+
+const invalidAuditRange = await request('/api/v1/admin/audit-logs?from=2026-11-18&to=2026-11-17', {}, userCookie);
+assert.equal(invalidAuditRange.response.status, 400, 'invalid date ranges must be rejected');
+
 process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, MFA recovery codes, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');

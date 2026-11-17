@@ -6,7 +6,33 @@ import { useRouter } from 'next/navigation';
 type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled: boolean; sessionMfaVerified: boolean };
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type Quest = { id: string; slug: string; status: string; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
-type Audit = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actor: { emailNormalized: string } | null };
+type Audit = {
+  id: string; action: string; entityType: string; entityId: string;
+  reason: string | null; beforeJson: unknown; afterJson: unknown;
+  createdAt: string; actor: { emailNormalized: string } | null;
+};
+type AuditPage = { items: Audit[]; total: number; take: number; skip: number };
+type AuditExport = { items: Audit[]; total: number; exported: number; limit: number; truncated: boolean };
+type AuditFilters = { q: string; action: string; actor: string; entityType: string; from: string; to: string };
+const AUDIT_PAGE_SIZE = 30;
+
+function auditQueryString(filters: AuditFilters, take?: number, skip?: number): string {
+  const params = new URLSearchParams();
+  if (take !== undefined) params.set('take', String(take));
+  if (skip !== undefined) params.set('skip', String(skip));
+  for (const [key, value] of Object.entries(filters)) {
+    if (value.trim()) params.set(key, value.trim());
+  }
+  return params.toString();
+}
+
+function csvCell(value: unknown): string {
+  const raw: string = value === null || value === undefined
+    ? ''
+    : typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+  const safe = /^\s*[=+\-@]/.test(raw) ? "'" + raw : raw;
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
 type ManagedUser = {
   id: string; email: string; nickname: string | null; status: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
   emailVerified: boolean; mfaEnabled: boolean; createdAt: string; roles: Array<{ key: string; name: string }>;
@@ -44,6 +70,16 @@ export function AdminClient() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditSkip, setAuditSkip] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditExporting, setAuditExporting] = useState(false);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditAction, setAuditAction] = useState('');
+  const [auditActor, setAuditActor] = useState('');
+  const [auditEntityType, setAuditEntityType] = useState('');
+  const [auditFrom, setAuditFrom] = useState('');
+  const [auditTo, setAuditTo] = useState('');
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleDrafts, setUserRoleDrafts] = useState<Record<string, string>>({});
@@ -111,7 +147,10 @@ export function AdminClient() {
         }
         setCategoryId((value) => value || cats.find((cat) => cat.status === 'PUBLISHED')?.id || '');
         if (result.user.roleKeys.some((r) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(r))) {
-          setAudit(await api<Audit[]>('/admin/audit-logs?take=30'));
+          const auditPage = await api<AuditPage>('/admin/audit-logs?take=' + AUDIT_PAGE_SIZE + '&skip=0');
+          setAudit(auditPage.items);
+          setAuditTotal(auditPage.total);
+          setAuditSkip(auditPage.skip);
         }
       }
     } catch (e) {
@@ -320,6 +359,81 @@ export function AdminClient() {
       body: JSON.stringify({ reason }),
     }), 'Остальные сессии пользователя ' + user.email + ' завершены.');
     if (expandedSessionUsers[user.id]) await loadManagedSessions(user.id);
+  }
+
+  function currentAuditFilters(): AuditFilters {
+    return {
+      q: auditSearch,
+      action: auditAction,
+      actor: auditActor,
+      entityType: auditEntityType,
+      from: auditFrom,
+      to: auditTo,
+    };
+  }
+
+  async function loadAuditPage(skip = 0, filters = currentAuditFilters()) {
+    setAuditLoading(true);
+    setError('');
+    try {
+      const query = auditQueryString(filters, AUDIT_PAGE_SIZE, skip);
+      const result = await api<AuditPage>('/admin/audit-logs?' + query);
+      setAudit(result.items);
+      setAuditTotal(result.total);
+      setAuditSkip(result.skip);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить журнал действий.');
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  async function resetAuditFilters() {
+    const empty: AuditFilters = { q: '', action: '', actor: '', entityType: '', from: '', to: '' };
+    setAuditSearch('');
+    setAuditAction('');
+    setAuditActor('');
+    setAuditEntityType('');
+    setAuditFrom('');
+    setAuditTo('');
+    await loadAuditPage(0, empty);
+  }
+
+  async function exportAuditLogs() {
+    setAuditExporting(true);
+    setError('');
+    try {
+      const query = auditQueryString(currentAuditFilters());
+      const result = await api<AuditExport>('/admin/audit-logs/export' + (query ? '?' + query : ''));
+      const headers = ['createdAt', 'actorEmail', 'action', 'entityType', 'entityId', 'reason', 'beforeJson', 'afterJson'];
+      const rows = result.items.map((entry) => [
+        entry.createdAt,
+        entry.actor?.emailNormalized ?? 'system',
+        entry.action,
+        entry.entityType,
+        entry.entityId,
+        entry.reason ?? '',
+        entry.beforeJson,
+        entry.afterJson,
+      ]);
+      const csv = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map((row) => row.map(csvCell).join(','))].join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'questoria-audit-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice(result.truncated
+        ? 'Выгружено ' + result.exported + ' из ' + result.total + ' записей. Экспорт ограничен 5 000 событиями.'
+        : 'Выгружено записей: ' + result.exported + '.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось экспортировать журнал действий.');
+    } finally {
+      setAuditExporting(false);
+    }
   }
 
   function workflow(quest: Quest, state: string) {
@@ -546,9 +660,52 @@ export function AdminClient() {
       </form>
     </section>}
 
-    {canReview && <section className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">05 / AUDIT TRAIL</p><h2>Журнал действий</h2></div><span className="admin-count">{audit.length}</span></div>
-      <div className="admin-list">{audit.map((entry) => <article className="admin-list-row" key={entry.id}><div><strong>{entry.action}</strong><span>{entry.entityType} · {entry.entityId} · {entry.actor?.emailNormalized ?? 'system'}</span></div><time>{new Date(entry.createdAt).toLocaleString('ru-RU')}</time></article>)}{!audit.length && <p className="admin-empty">Событий пока нет.</p>}</div>
+    {canReview && <section className="admin-panel admin-audit-panel">
+      <div className="admin-section-title">
+        <div><p className="eyebrow">05 / AUDIT TRAIL</p><h2>Журнал действий</h2>
+          <p className="admin-section-description">Поиск по событиям, пользователям и объектам. Даты фильтруются по UTC.</p>
+        </div>
+        <span className="admin-count">{auditTotal}</span>
+      </div>
+      <form className="admin-form admin-audit-filters" onSubmit={(event) => { event.preventDefault(); void loadAuditPage(0); }}>
+        <label className="field admin-audit-search"><span>Поиск по журналу</span><input type="search" value={auditSearch} onChange={(event) => setAuditSearch(event.target.value)} placeholder="Событие, email, ID объекта или причина"/></label>
+        <label className="field"><span>Тип события</span><input value={auditAction} onChange={(event) => setAuditAction(event.target.value)} placeholder="Например security.mfa"/></label>
+        <label className="field"><span>Пользователь (email)</span><input type="search" value={auditActor} onChange={(event) => setAuditActor(event.target.value)} placeholder="admin@example.com"/></label>
+        <label className="field"><span>Тип объекта</span>
+          <select value={auditEntityType} onChange={(event) => setAuditEntityType(event.target.value)}>
+            <option value="">Все объекты</option><option value="USER">Пользователь</option><option value="QUEST">Квест</option><option value="CATEGORY">Рубрика</option>
+          </select>
+        </label>
+        <label className="field"><span>С даты (UTC)</span><input type="date" value={auditFrom} onChange={(event) => setAuditFrom(event.target.value)}/></label>
+        <label className="field"><span>По дату (UTC)</span><input type="date" value={auditTo} onChange={(event) => setAuditTo(event.target.value)}/></label>
+        <div className="admin-audit-actions">
+          <button className="button button-primary button-small" type="submit" disabled={auditLoading}>Применить фильтры</button>
+          <button className="button button-secondary button-small" type="button" disabled={auditLoading} onClick={() => void resetAuditFilters()}>Сбросить</button>
+          <button className="button button-secondary button-small" type="button" disabled={auditExporting} onClick={() => void exportAuditLogs()}>{auditExporting ? 'Готовим CSV…' : 'Экспорт CSV'}</button>
+        </div>
+      </form>
+      {auditLoading && <p className="admin-empty">Загружаем события…</p>}
+      {!auditLoading && <div className="admin-list admin-audit-list">
+        {audit.map((entry) => <article className="admin-audit-row" key={entry.id}>
+          <div className="admin-audit-heading">
+            <div><strong>{entry.action}</strong><span>{entry.entityType} · {entry.entityId} · {entry.actor?.emailNormalized ?? 'system'}</span></div>
+            <time>{new Date(entry.createdAt).toLocaleString('ru-RU')}</time>
+          </div>
+          {entry.reason && <p className="admin-audit-reason">Причина: {entry.reason}</p>}
+          {(entry.beforeJson != null || entry.afterJson != null) && <details className="admin-audit-details">
+            <summary>Подробности изменения</summary>
+            <pre>{JSON.stringify({ before: entry.beforeJson, after: entry.afterJson }, null, 2)}</pre>
+          </details>}
+        </article>)}
+        {!audit.length && <p className="admin-empty">По заданным условиям событий нет.</p>}
+      </div>}
+      <div className="admin-audit-pagination">
+        <span>{auditTotal === 0 ? 'Нет записей' : 'Показано ' + (auditSkip + 1) + '–' + Math.min(auditSkip + audit.length, auditTotal) + ' из ' + auditTotal}</span>
+        <div>
+          <button className="button button-small button-secondary" type="button" disabled={auditLoading || auditSkip === 0} onClick={() => void loadAuditPage(Math.max(0, auditSkip - AUDIT_PAGE_SIZE))}>Назад</button>
+          <button className="button button-small button-secondary" type="button" disabled={auditLoading || auditSkip + audit.length >= auditTotal} onClick={() => void loadAuditPage(auditSkip + AUDIT_PAGE_SIZE)}>Далее</button>
+        </div>
+      </div>
     </section>}
   </main>;
 }

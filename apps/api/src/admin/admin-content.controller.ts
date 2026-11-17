@@ -22,6 +22,7 @@ import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
 import { Roles } from './roles.decorator.js';
 import { RolesGuard } from './roles.guard.js';
+import { parseAuditLogQuery } from './audit-log.query.js';
 
 @Controller('v1/admin')
 @UseGuards(AuthGuard, RolesGuard, AdminMfaGuard, AdminCsrfGuard)
@@ -200,10 +201,33 @@ export class AdminContentController {
     return this.admin.revokeOtherUserSessions(request.authUser as AuthenticatedUser, id, dto.reason);
   }
 
+  @Get('audit-logs/export')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  exportAuditLogs(
+    @Query('q') q?: string,
+    @Query('action') action?: string,
+    @Query('actor') actor?: string,
+    @Query('entityType') entityType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<object> {
+    const { filters } = parseAuditLogQuery({ q, action, actor, entityType, from, to });
+    return this.admin.exportAuditLogs(filters);
+  }
+
   @Get('audit-logs')
   @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
-  listAuditLogs(@Query('take') take?: string): Promise<object[]> {
-    const parsed = take === undefined ? 50 : Number(take);
-    return this.admin.listAuditLogs(Number.isFinite(parsed) ? parsed : 50);
+  listAuditLogs(
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('q') q?: string,
+    @Query('action') action?: string,
+    @Query('actor') actor?: string,
+    @Query('entityType') entityType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<object> {
+    const parsed = parseAuditLogQuery({ take, skip, q, action, actor, entityType, from, to });
+    return this.admin.listAuditLogs(parsed.filters, parsed.take, parsed.skip);
   }
 }
