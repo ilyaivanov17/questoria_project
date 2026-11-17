@@ -59,7 +59,7 @@ test('multiple_choice compares the complete set independent of selection order',
   );
 });
 
-test('numeric_input supports finite decimals and configured tolerance', () => {
+test('numeric_input supports decimal dots, decimal commas and configured tolerance', () => {
   assert.equal(
     validatePuzzleAnswer(
       'numeric_input',
@@ -76,7 +76,7 @@ test('numeric_input supports finite decimals and configured tolerance', () => {
       { correctValue: 12.5 },
       { value: '12,5' },
     ).isCorrect,
-    false,
+    true,
   );
   assert.throws(
     () => validatePuzzleAnswer(
@@ -84,6 +84,15 @@ test('numeric_input supports finite decimals and configured tolerance', () => {
       {},
       { correctValue: 12.5 },
       { value: 'Infinity' },
+    ),
+    BadRequestException,
+  );
+  assert.throws(
+    () => validatePuzzleAnswer(
+      'numeric_input',
+      {},
+      { correctValue: 12.5 },
+      { value: '12,5.6' },
     ),
     BadRequestException,
   );

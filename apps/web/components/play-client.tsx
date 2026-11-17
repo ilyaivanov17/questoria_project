@@ -330,9 +330,9 @@ export function PlayClient({ runId }: { runId: string }) {
                 <span className="answer-input-label">Твой ответ{puzzle.unit ? ` (${puzzle.unit})` : ''}</span>
                 <input
                   className="answer-input"
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step="any"
+                  maxLength={64}
                   value={inputAnswer}
                   placeholder={puzzle.placeholder ?? 'Введи число'}
                   onChange={(event) => setInputAnswer(event.target.value)}

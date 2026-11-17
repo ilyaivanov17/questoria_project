@@ -57,7 +57,7 @@ function parseNumericAnswer(value: unknown): number {
     return invalidAnswer('answer.value must be a finite number.');
   }
 
-  const normalized = value.trim();
+  const normalized = value.trim().replace(',', '.');
   if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
     return invalidAnswer('Enter a valid number using a decimal point if needed.');
   }
