@@ -19,7 +19,7 @@ test('missionCountLabel uses correct Russian plural forms', () => {
   ];
 
   for (const [count, expected] of cases) {
-    assert.equal(missionCountLabel(count), expected, \`count: \${count}\`);
+    assert.equal(missionCountLabel(count), expected, 'count: ' + count);
   }
 });
 
