@@ -33,6 +33,12 @@ function extractCookie(response) {
   const setCookie = response.headers.get('set-cookie');
   assert.ok(setCookie, 'login must set a session cookie');
   assert.match(setCookie, /HttpOnly/i, 'session cookie must be HttpOnly');
+  assert.match(setCookie, /SameSite=Lax/i, 'session cookie must use SameSite=Lax');
+  assert.match(setCookie, /(?:^|;\\s*)Path=\\//i, 'session cookie must be scoped to the application root');
+  assert.match(setCookie, /(?:^|;\\s*)Max-Age=604800(?:;|$)/i, 'session cookie must have the configured seven-day lifetime');
+  if (process.env.NODE_ENV === 'production') {
+    assert.match(setCookie, /(?:^|;\\s*)Secure(?:;|$)/i, 'production session cookies must require HTTPS');
+  }
   return setCookie.split(';', 1)[0];
 }
 
@@ -299,10 +305,18 @@ assert.equal(profileUpdate.body.nickname, 'Smoke Champion');
 
 const logout = await request('/api/v1/auth/logout', { method: 'POST' }, userCookie);
 assert.equal(logout.response.status, 204);
-userCookie = '';
+const logoutCookie = logout.response.headers.get('set-cookie');
+assert.ok(logoutCookie, 'logout must clear the session cookie');
+assert.match(logoutCookie, /questoria_session=/i);
+assert.match(logoutCookie, /HttpOnly/i);
+assert.match(logoutCookie, /SameSite=Lax/i);
+assert.match(logoutCookie, /Expires=Thu, 01 Jan 1970/i, 'logout must expire the browser cookie');
 
-const afterLogout = await request('/api/v1/auth/me');
-assert.equal(afterLogout.response.status, 401);
+const afterLogout = await request('/api/v1/auth/me', {}, userCookie);
+assert.equal(afterLogout.response.status, 401, 'logout must revoke the server-side session');
+userCookie = '';
+const afterLogoutWithoutCookie = await request('/api/v1/auth/me');
+assert.equal(afterLogoutWithoutCookie.response.status, 401);
 
 const login = await request('/api/v1/auth/login', {
   method: 'POST',
