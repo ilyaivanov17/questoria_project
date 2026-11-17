@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import type { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
+import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
 
 const EDITABLE_STATUSES = ['DRAFT'] as const;
 
@@ -463,6 +464,231 @@ export class AdminService {
       take: safeTake,
       include: { actor: { select: { emailNormalized: true } } },
     });
+  }
+
+
+  async listUsers(search?: string): Promise<object[]> {
+    const term = search?.trim();
+    const users = await this.prisma.user.findMany({
+      where: term
+        ? {
+            OR: [
+              { emailNormalized: { contains: term, mode: 'insensitive' } },
+              { profile: { is: { nickname: { contains: term, mode: 'insensitive' } } } },
+            ],
+          }
+        : undefined,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        emailNormalized: true,
+        status: true,
+        emailVerifiedAt: true,
+        mfaEnabledAt: true,
+        createdAt: true,
+        profile: { select: { nickname: true } },
+        roles: { select: { role: { select: { key: true, name: true } } } },
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      email: user.emailNormalized,
+      nickname: user.profile?.nickname ?? null,
+      status: user.status,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      mfaEnabled: Boolean(user.mfaEnabledAt),
+      createdAt: user.createdAt,
+      roles: user.roles
+        .map((entry) => ({ key: entry.role.key, name: entry.role.name }))
+        .sort((a, b) => a.key.localeCompare(b.key)),
+    }));
+  }
+
+  async assignUserRole(
+    actor: AuthenticatedUser,
+    targetUserId: string,
+    roleKey: string,
+    reason: string,
+  ): Promise<object> {
+    if (isSelfManagement(actor.userId, targetUserId)) {
+      throw new ForbiddenException('You cannot change your own account roles.');
+    }
+    const allowedRoles = ['AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(roleKey)) {
+      throw new BadRequestException('Unknown role key.');
+    }
+    const auditReason = reason.trim();
+    if (auditReason.length < 5) {
+      throw new BadRequestException('Provide a reason with at least five characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(731904219)`;
+      const target = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, emailNormalized: true, status: true },
+      });
+      if (!target) throw new NotFoundException('User not found.');
+      const role = await tx.role.findUnique({ where: { key: roleKey } });
+      if (!role) throw new NotFoundException('Role definition not found; run the database seed.');
+
+      const existing = await tx.userRole.findUnique({
+        where: { userId_roleId: { userId: targetUserId, roleId: role.id } },
+      });
+      if (existing) throw new ConflictException('This user already has the selected role.');
+
+      await tx.userRole.create({ data: { userId: targetUserId, roleId: role.id } });
+      await this.audit(
+        tx,
+        actor.userId,
+        'security.role.granted',
+        'USER',
+        targetUserId,
+        { email: target.emailNormalized },
+        { email: target.emailNormalized, role: role.key },
+        auditReason,
+      );
+
+      return { userId: targetUserId, email: target.emailNormalized, role: role.key, granted: true };
+    }, { isolationLevel: 'Serializable' });
+  }
+
+  async removeUserRole(
+    actor: AuthenticatedUser,
+    targetUserId: string,
+    roleKey: string,
+    reason: string,
+  ): Promise<object> {
+    if (isSelfManagement(actor.userId, targetUserId)) {
+      throw new ForbiddenException('You cannot change your own account roles.');
+    }
+    const allowedRoles = ['AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(roleKey)) {
+      throw new BadRequestException('Unknown role key.');
+    }
+    const auditReason = reason.trim();
+    if (auditReason.length < 5) {
+      throw new BadRequestException('Provide a reason with at least five characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(731904219)`;
+      const target = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: {
+          id: true,
+          emailNormalized: true,
+          status: true,
+          roles: { select: { role: { select: { key: true, id: true } } } },
+        },
+      });
+      if (!target) throw new NotFoundException('User not found.');
+      const role = target.roles.find((entry) => entry.role.key === roleKey)?.role;
+      if (!role) throw new NotFoundException('User does not have this role.');
+
+      if (roleKey === 'SUPER_ADMIN' && target.status === 'ACTIVE') {
+        const activeSuperAdminCount = await tx.userRole.count({
+          where: {
+            roleId: role.id,
+            user: { is: { status: 'ACTIVE' } },
+          },
+        });
+        if (wouldRemoveLastActiveSuperAdmin(
+          target.roles.map((entry) => entry.role.key),
+          target.status,
+          activeSuperAdminCount,
+        )) {
+          throw new ConflictException('The last active Super Admin role cannot be removed.');
+        }
+      }
+
+      await tx.userRole.delete({
+        where: { userId_roleId: { userId: targetUserId, roleId: role.id } },
+      });
+      await this.audit(
+        tx,
+        actor.userId,
+        'security.role.revoked',
+        'USER',
+        targetUserId,
+        { email: target.emailNormalized, role: roleKey },
+        { email: target.emailNormalized, role: roleKey, revoked: true },
+        auditReason,
+      );
+      return { userId: targetUserId, email: target.emailNormalized, role: roleKey, revoked: true };
+    }, { isolationLevel: 'Serializable' });
+  }
+
+  async updateUserStatus(
+    actor: AuthenticatedUser,
+    targetUserId: string,
+    status: 'ACTIVE' | 'SUSPENDED',
+    reason: string,
+  ): Promise<object> {
+    if (isSelfManagement(actor.userId, targetUserId)) {
+      throw new ForbiddenException('You cannot change your own account status.');
+    }
+    if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+      throw new BadRequestException('Only ACTIVE and SUSPENDED statuses can be assigned.');
+    }
+    const auditReason = reason.trim();
+    if (auditReason.length < 5) {
+      throw new BadRequestException('Provide a reason with at least five characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(731904219)`;
+      const target = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: {
+          id: true,
+          emailNormalized: true,
+          status: true,
+          roles: { select: { role: { select: { key: true, id: true } } } },
+        },
+      });
+      if (!target) throw new NotFoundException('User not found.');
+      if (target.status === status) {
+        return { userId: targetUserId, email: target.emailNormalized, status, changed: false };
+      }
+
+      if (status === 'SUSPENDED') {
+        const superAdmin = target.roles.find((entry) => entry.role.key === 'SUPER_ADMIN')?.role;
+        if (superAdmin && target.status === 'ACTIVE') {
+          const activeSuperAdminCount = await tx.userRole.count({
+            where: { roleId: superAdmin.id, user: { is: { status: 'ACTIVE' } } },
+          });
+          if (wouldRemoveLastActiveSuperAdmin(
+            target.roles.map((entry) => entry.role.key),
+            target.status,
+            activeSuperAdminCount,
+          )) {
+            throw new ConflictException('The last active Super Admin account cannot be suspended.');
+          }
+        }
+      }
+
+      const updated = await tx.user.update({
+        where: { id: targetUserId },
+        data: { status },
+      });
+      if (status === 'SUSPENDED') {
+        await tx.session.deleteMany({ where: { userId: targetUserId } });
+      }
+      await this.audit(
+        tx,
+        actor.userId,
+        status === 'SUSPENDED' ? 'security.user.suspended' : 'security.user.reactivated',
+        'USER',
+        targetUserId,
+        { email: target.emailNormalized, status: target.status },
+        { email: target.emailNormalized, status: updated.status },
+        auditReason,
+      );
+      return { userId: targetUserId, email: target.emailNormalized, status: updated.status, changed: true };
+    }, { isolationLevel: 'Serializable' });
   }
 
   private validateQuestMetadata(dto: CreateQuestDto): void {
