@@ -236,6 +236,10 @@ model PuzzleAttempt {
   score             Int      @default(0)
   feedback          String
   attemptsRemaining Int      @map("attempts_remaining")
+  xpAwarded         Int      @default(0) @map("xp_awarded")
+  coinsAwarded      Int      @default(0) @map("coins_awarded")
+  runCompleted      Boolean  @default(false) @map("run_completed")
+  questFirstCompletion Boolean @default(false) @map("quest_first_completion")
   createdAt         DateTime @default(now()) @map("created_at")
   profile           Profile  @relation(fields: [profileId], references: [id], onDelete: Restrict)
   questRun          QuestRun @relation(fields: [questRunId], references: [id], onDelete: Restrict)
