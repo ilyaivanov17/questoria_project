@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateQuestDto, UpdateQuestDto } from './dto/quest.dto.js';
+import { AssignUserRoleDto, RemoveUserRoleDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
 import { Roles } from './roles.decorator.js';
@@ -129,6 +130,44 @@ export class AdminContentController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<object> {
     return this.admin.publishQuest(request.authUser as AuthenticatedUser, id);
+  }
+
+
+  @Get('users')
+  @Roles('SUPER_ADMIN')
+  listUsers(@Query('search') search?: string): Promise<object[]> {
+    return this.admin.listUsers(search);
+  }
+
+  @Post('users/:id/roles')
+  @Roles('SUPER_ADMIN')
+  assignUserRole(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AssignUserRoleDto,
+  ): Promise<object> {
+    return this.admin.assignUserRole(request.authUser as AuthenticatedUser, id, dto.role, dto.reason);
+  }
+
+  @Delete('users/:id/roles/:roleKey')
+  @Roles('SUPER_ADMIN')
+  removeUserRole(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('roleKey') roleKey: string,
+    @Body() dto: RemoveUserRoleDto,
+  ): Promise<object> {
+    return this.admin.removeUserRole(request.authUser as AuthenticatedUser, id, roleKey, dto.reason);
+  }
+
+  @Patch('users/:id/status')
+  @Roles('SUPER_ADMIN')
+  updateUserStatus(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateManagedUserStatusDto,
+  ): Promise<object> {
+    return this.admin.updateUserStatus(request.authUser as AuthenticatedUser, id, dto.status, dto.reason);
   }
 
   @Get('audit-logs')

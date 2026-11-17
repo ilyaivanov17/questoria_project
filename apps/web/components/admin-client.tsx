@@ -7,6 +7,16 @@ type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled:
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type Quest = { id: string; slug: string; status: string; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
 type Audit = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actor: { emailNormalized: string } | null };
+type ManagedUser = {
+  id: string; email: string; nickname: string | null; status: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
+  emailVerified: boolean; mfaEnabled: boolean; createdAt: string; roles: Array<{ key: string; name: string }>;
+};
+const managedRoleOptions = [
+  { key: 'AUTHOR', label: 'Автор' },
+  { key: 'REVIEWER', label: 'Рецензент' },
+  { key: 'ADMIN', label: 'Администратор' },
+  { key: 'SUPER_ADMIN', label: 'Суперадминистратор' },
+] as const;
 const starterLevels = [{ orderNo: 1, title: 'Первый уровень', intro: 'Сюжет и инструкция для игрока.', puzzles: [{ orderNo: 1, type: 'single_choice', maxAttempts: 3, maxScore: 10, publicPayload: { prompt: 'Что продолжает ряд 3, 6, 12?', options: [{ id: 'a', label: '18' }, { id: 'b', label: '24' }, { id: 'c', label: '30' }] }, solutionPrivate: { correctOptionId: 'b', correctFeedback: 'Каждый раз число удваивается.', incorrectFeedback: 'Сравни соседние числа.' }, hints: ['Попробуй умножить последнее число на 2.'] }] }];
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -31,6 +41,10 @@ export function AdminClient() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleDrafts, setUserRoleDrafts] = useState<Record<string, string>>({});
+  const [userReasons, setUserReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -68,12 +82,16 @@ export function AdminClient() {
       setIdentity(result.user);
       const adminNeedsMfa = result.user.roleKeys.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r));
       if (!adminNeedsMfa || (result.user.mfaEnabled && result.user.sessionMfaVerified)) {
-        const [cats, qs] = await Promise.all([
+        const [cats, qs, members] = await Promise.all([
           api<Category[]>('/admin/categories'),
           api<Quest[]>('/admin/quests'),
+          result.user.roleKeys.includes('SUPER_ADMIN')
+            ? api<ManagedUser[]>('/admin/users')
+            : Promise.resolve([] as ManagedUser[]),
         ]);
         setCategories(cats);
         setQuests(qs);
+        setManagedUsers(members);
         setCategoryId((value) => value || cats.find((cat) => cat.status === 'PUBLISHED')?.id || '');
         if (result.user.roleKeys.some((r) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(r))) {
           setAudit(await api<Audit[]>('/admin/audit-logs?take=30'));
@@ -143,6 +161,47 @@ export function AdminClient() {
     setSlug(''); setTitle('');
   }
 
+
+  async function assignManagedRole(user: ManagedUser) {
+    const role = userRoleDrafts[user.id] ?? 'AUTHOR';
+    const reason = userReasons[user.id]?.trim() ?? '';
+    if (reason.length < 5) {
+      setError('Укажи причину изменения роли (минимум 5 символов).');
+      return;
+    }
+    await action(() => api(`/admin/users/${user.id}/roles`, {
+      method: 'POST',
+      body: JSON.stringify({ role, reason }),
+    }), `Роль ${role} назначена: ${user.email}.`);
+  }
+
+  async function revokeManagedRole(user: ManagedUser, role: string) {
+    const reason = userReasons[user.id]?.trim() ?? '';
+    if (reason.length < 5) {
+      setError('Укажи причину изменения роли (минимум 5 символов).');
+      return;
+    }
+    await action(() => api(`/admin/users/${user.id}/roles/${role}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }), `Роль ${role} снята с ${user.email}.`);
+  }
+
+  async function toggleManagedUserStatus(user: ManagedUser) {
+    const reason = userReasons[user.id]?.trim() ?? '';
+    if (reason.length < 5) {
+      setError('Укажи причину изменения статуса (минимум 5 символов).');
+      return;
+    }
+    const status = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    await action(() => api(`/admin/users/${user.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason }),
+    }), status === 'SUSPENDED'
+      ? `Аккаунт ${user.email} приостановлен, активные сессии завершены.`
+      : `Аккаунт ${user.email} снова активен. Пользователю нужно войти заново.`);
+  }
+
   function workflow(quest: Quest, state: string) {
     const path = state === 'PUBLISHED' ? 'draft' : state === 'DRAFT' ? 'submit-review' : state === 'REVIEW' ? 'approve' : 'publish';
     const text = { DRAFT: 'Отправлено на рецензию.', REVIEW: 'Версия одобрена.', APPROVED: 'Квест опубликован.', PUBLISHED: 'Новая версия создана.' }[state] ?? 'Готово.';
@@ -153,6 +212,13 @@ export function AdminClient() {
   const canAuthor = has(identity, 'AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN');
   const canReview = has(identity, 'REVIEWER', 'ADMIN', 'SUPER_ADMIN');
   const canPublish = isAdmin;
+  const isSuperAdmin = has(identity, 'SUPER_ADMIN');
+  const visibleManagedUsers = managedUsers.filter((user) => {
+    const term = userSearch.trim().toLocaleLowerCase('ru-RU');
+    return !term || user.email.toLocaleLowerCase('ru-RU').includes(term)
+      || (user.nickname ?? '').toLocaleLowerCase('ru-RU').includes(term)
+      || user.roles.some((role) => role.name.toLocaleLowerCase('ru-RU').includes(term));
+  });
 
   if (loading) return <main className="admin-page"><p className="muted-copy">Загружаем CMS…</p></main>;
   if (!identity) return <main className="admin-page"><section className="admin-panel"><h1>CMS недоступна</h1><p>{error || 'Войди в аккаунт с назначенной ролью.'}</p><a className="button button-primary" href="/login?next=%2Fadmin">Войти</a></section></main>;
@@ -176,8 +242,65 @@ export function AdminClient() {
     <header className="admin-header"><div><p className="eyebrow">QUESTORIA CONTENT STUDIO</p><h1>Управление контентом</h1><p className="muted-copy">{identity.email} · {identity.roleKeys.join(', ')}</p></div><a className="button button-secondary" href="/quests">Открыть каталог</a></header>
     {error && <p className="form-error admin-alert" role="alert">{error}</p>}{notice && <p className="form-success admin-alert" role="status">{notice}</p>}
 
+
+    {isSuperAdmin && <section className="admin-panel admin-users-panel">
+      <div className="admin-section-title">
+        <div><p className="eyebrow">01 / USER ACCESS</p><h2>Пользователи и роли</h2><p className="admin-section-description">Управление доступом доступно только Super Admin после подтверждения MFA.</p></div>
+        <span className="admin-count">{managedUsers.length}</span>
+      </div>
+      <label className="field admin-user-search"><span>Поиск пользователя</span><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Email, имя или роль"/></label>
+      <div className="admin-user-list">
+        {visibleManagedUsers.map((user) => {
+          const isSelf = user.id === identity.userId;
+          const assignedKeys = new Set(user.roles.map((role) => role.key));
+          const availableRoles = managedRoleOptions.filter((role) => !assignedKeys.has(role.key));
+          return (
+            <article className="admin-user-card" key={user.id}>
+              <div className="admin-user-heading">
+                <div className="admin-user-avatar">{(user.nickname || user.email).slice(0, 1).toUpperCase()}</div>
+                <div className="admin-user-identity">
+                  <strong>{user.nickname || user.email}</strong>
+                  <span>{user.email}</span>
+                  <small>Создан {new Date(user.createdAt).toLocaleDateString('ru-RU')}</small>
+                </div>
+                <span className={`admin-status status-${user.status.toLowerCase()}`}>{user.status === 'ACTIVE' ? 'Активен' : user.status === 'SUSPENDED' ? 'Приостановлен' : 'Ожидает'}</span>
+              </div>
+              <div className="admin-user-trust">
+                <span className={user.emailVerified ? 'admin-trust-good' : 'admin-trust-muted'}>{user.emailVerified ? '✓ Email подтверждён' : '· Email не подтверждён'}</span>
+                <span className={user.mfaEnabled ? 'admin-trust-good' : 'admin-trust-muted'}>{user.mfaEnabled ? '✓ MFA включена' : '· MFA не включена'}</span>
+              </div>
+              <div className="admin-user-roles">
+                {user.roles.length ? user.roles.map((role) => (
+                  <span className="admin-role-chip" key={role.key}>{role.name}
+                    {!isSelf && <button type="button" disabled={busy} onClick={() => void revokeManagedRole(user, role.key)} aria-label={`Снять роль ${role.name} у ${user.email}`}>×</button>}
+                  </span>
+                )) : <span className="admin-no-role">Без ролей CMS</span>}
+              </div>
+              {!isSelf && <div className="admin-user-management">
+                <label className="field"><span>Назначить роль</span>
+                  <select value={userRoleDrafts[user.id] ?? availableRoles[0]?.key ?? ''} onChange={(event) => setUserRoleDrafts((current) => ({ ...current, [user.id]: event.target.value }))} disabled={!availableRoles.length || busy}>
+                    {availableRoles.length ? availableRoles.map((role) => <option key={role.key} value={role.key}>{role.label}</option>) : <option value="">Все роли назначены</option>}
+                  </select>
+                </label>
+                <label className="field admin-reason-field"><span>Причина изменения (от 5 символов)</span>
+                  <input value={userReasons[user.id] ?? ''} onChange={(event) => setUserReasons((current) => ({ ...current, [user.id]: event.target.value }))} placeholder="Например: назначение редактора"/>
+                </label>
+                <div className="admin-user-actions">
+                  <button className="button button-small button-secondary" type="button" disabled={busy || !availableRoles.length} onClick={() => void assignManagedRole(user)}>Назначить роль</button>
+                  <button className={user.status === 'ACTIVE' ? 'button button-small button-danger' : 'button button-small button-primary'} type="button" disabled={busy || user.status === 'PENDING'} onClick={() => void toggleManagedUserStatus(user)}>{user.status === 'ACTIVE' ? 'Приостановить' : 'Активировать'}</button>
+                </div>
+              </div>}
+              {isSelf && <p className="admin-self-note">Это твой аккаунт. Изменять собственные роли и статус здесь нельзя.</p>}
+            </article>
+          );
+        })}
+        {!visibleManagedUsers.length && <p className="admin-empty">{managedUsers.length ? 'По запросу ничего не найдено.' : 'Пользователей пока нет.'}</p>}
+      </div>
+      <p className="admin-users-footnote">Защита от блокировки: нельзя изменить собственный доступ или удалить/приостановить последнего активного Super Admin. Приостановка аккаунта завершает все его сессии. Все изменения записываются в журнал аудита с указанной причиной.</p>
+    </section>}
+
     <section className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">01 / CATEGORIES</p><h2>Рубрики</h2></div><span className="admin-count">{categories.length}</span></div>
+      <div className="admin-section-title"><div><p className="eyebrow">02 / CATEGORIES</p><h2>Рубрики</h2></div><span className="admin-count">{categories.length}</span></div>
       <div className="admin-list">{categories.map((cat) => <article className="admin-list-row" key={cat.id}>
         <div><strong>{cat.title}</strong><span>{cat.slug} · {cat.locale}</span></div>
         <div className="admin-row-actions"><span className={`admin-status status-${cat.status.toLowerCase()}`}>{cat.status}</span>
@@ -240,7 +363,7 @@ export function AdminClient() {
     </section>}
 
     {canReview && <section className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">04 / AUDIT TRAIL</p><h2>Журнал действий</h2></div><span className="admin-count">{audit.length}</span></div>
+      <div className="admin-section-title"><div><p className="eyebrow">05 / AUDIT TRAIL</p><h2>Журнал действий</h2></div><span className="admin-count">{audit.length}</span></div>
       <div className="admin-list">{audit.map((entry) => <article className="admin-list-row" key={entry.id}><div><strong>{entry.action}</strong><span>{entry.entityType} · {entry.entityId} · {entry.actor?.emailNormalized ?? 'system'}</span></div><time>{new Date(entry.createdAt).toLocaleString('ru-RU')}</time></article>)}{!audit.length && <p className="admin-empty">Событий пока нет.</p>}</div>
     </section>}
   </main>;
