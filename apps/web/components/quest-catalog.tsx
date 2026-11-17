@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { matchesDuration, missionCountLabel } from '../lib/catalog-utils.mjs';
+import { matchesDuration, missionCountLabel, type QuestDurationFilter } from '../lib/catalog-utils.mjs';
 
 interface QuestCard {
   slug: string;
@@ -46,7 +46,7 @@ export function QuestCatalog({ categories }: { categories: Category[] }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [difficulty, setDifficulty] = useState('all');
-  const [duration, setDuration] = useState('all');
+  const [duration, setDuration] = useState<QuestDurationFilter>('all');
   const [sort, setSort] = useState('recommended');
 
   const allQuests = useMemo(
