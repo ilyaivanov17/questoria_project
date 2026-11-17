@@ -4,14 +4,17 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { getWebOrigin } from './config/web-origin.js';
+import { requestContextMiddleware } from './request-context.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  app.use(requestContextMiddleware);
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: getWebOrigin(),
     credentials: true,
+    exposedHeaders: ['x-request-id'],
   });
   app.useGlobalPipes(
     new ValidationPipe({
