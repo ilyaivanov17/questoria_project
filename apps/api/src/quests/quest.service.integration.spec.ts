@@ -101,7 +101,7 @@ test(
       data: {
         categoryId,
         slug: `integration-${fixtureId}`,
-        status: 'PUBLISHED',
+        status: 'DRAFT',
         versions: {
           create: {
             versionNo: 1,
@@ -113,7 +113,7 @@ test(
             difficulty: 'beginner',
             durationMin: 5,
             locale: 'ru',
-            status: 'PUBLISHED',
+            status: 'DRAFT',
             levels: {
               create: {
                 orderNo: 1,
@@ -170,8 +170,19 @@ test(
           },
         },
       },
+      include: { versions: { select: { id: true } } },
     });
     questId = quest.id;
+    const questVersionId = quest.versions[0]?.id;
+    assert.ok(questVersionId, 'the integration fixture must create a quest version');
+    await prisma.questVersion.update({
+      where: { id: questVersionId },
+      data: { status: 'PUBLISHED' },
+    });
+    await prisma.quest.update({
+      where: { id: quest.id },
+      data: { status: 'PUBLISHED' },
+    });
 
     const service = new QuestService(prisma);
     const started = await service.startRun(profileId, { slug: quest.slug }) as RunSnapshot;
