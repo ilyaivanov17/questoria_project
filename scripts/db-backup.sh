@@ -41,6 +41,12 @@ if [[ "$DB_USER" != "$CONTAINER_USER" ]]; then
   exit 1
 fi
 
+if [[ "${1:-}" == "--" ]]; then shift; fi
+if [[ $# -gt 1 ]]; then
+  echo "Usage: pnpm run db:backup -- [archive-path]" >&2
+  exit 2
+fi
+
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUTPUT="${1:-backups/questoria-$STAMP.dump}"
 if [[ "$OUTPUT" != /* ]]; then OUTPUT="$ROOT/$OUTPUT"; fi

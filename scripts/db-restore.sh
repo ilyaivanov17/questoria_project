@@ -4,6 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+if [[ "${1:-}" == "--" ]]; then shift; fi
+
 usage() {
   echo "Usage: ALLOW_DATABASE_RESTORE=1 pnpm run db:restore -- <archive.dump> --confirm-database <database-name>" >&2
   exit 2
