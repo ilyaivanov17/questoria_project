@@ -31,7 +31,7 @@ const apiBase = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
 
 async function getCategories(): Promise<Category[] | null> {
   try {
-    const response = await fetch(\`\${apiBase}/api/v1/public/categories\`, { cache: 'no-store' });
+    const response = await fetch(apiBase + '/api/v1/public/categories', { cache: 'no-store' });
     if (!response.ok) return null;
     const categories = (await response.json()) as Category[];
     return Array.isArray(categories) ? categories : null;
