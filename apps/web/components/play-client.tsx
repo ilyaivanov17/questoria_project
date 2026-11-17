@@ -20,7 +20,13 @@ interface RunState {
     maxAttempts: number;
     latestAttempt: { isCorrect: boolean; feedback: string; attemptsRemaining: number } | null;
   } | null;
-  result: { success: boolean; score: number; attempts: number; completedAt: string | null } | null;
+  result: {
+    success: boolean;
+    score: number;
+    attempts: number;
+    completedAt: string | null;
+    rewards: { xp: number; coins: number; firstCompletion: boolean };
+  } | null;
 }
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -159,10 +165,20 @@ export function PlayClient({ runId }: { runId: string }) {
           <div className="result-stats">
             <div><strong>{run.result?.score ?? 0}</strong><span>баллов</span></div>
             <div><strong>{run.result?.attempts ?? 0}</strong><span>попыток</span></div>
+            <div className="reward-stat"><strong>+{run.result?.rewards.xp ?? 0}</strong><span>XP</span></div>
+            <div className="reward-stat"><strong>+{run.result?.rewards.coins ?? 0}</strong><span>монет</span></div>
           </div>
-          <button className="button button-primary" disabled={submitting} onClick={restartQuest} type="button">
-            {submitting ? 'Готовим…' : 'Пройти ещё раз'}
-          </button>
+          {run.result?.rewards.firstCompletion ? (
+            <p className="result-reward-note">Награда за первое прохождение начислена в твой профиль.</p>
+          ) : (
+            <p className="small-note">Повторное прохождение не приносит дополнительные монеты и XP за эту версию миссии.</p>
+          )}
+          <div className="result-actions">
+            <button className="button button-primary" disabled={submitting} onClick={restartQuest} type="button">
+              {submitting ? 'Готовим…' : 'Пройти ещё раз'}
+            </button>
+            <Link className="text-link" href="/profile">Мой профиль →</Link>
+          </div>
           <Link className="text-link result-back" href="/quests">Вернуться в каталог</Link>
           {error && <p className="form-error" role="alert">{error}</p>}
         </section>
