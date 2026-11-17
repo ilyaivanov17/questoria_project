@@ -7,11 +7,10 @@ type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled:
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type Quest = { id: string; slug: string; status: string; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
 type Audit = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actor: { emailNormalized: string } | null };
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 const starterLevels = [{ orderNo: 1, title: 'Первый уровень', intro: 'Сюжет и инструкция для игрока.', puzzles: [{ orderNo: 1, type: 'single_choice', maxAttempts: 3, maxScore: 10, publicPayload: { prompt: 'Что продолжает ряд 3, 6, 12?', options: [{ id: 'a', label: '18' }, { id: 'b', label: '24' }, { id: 'c', label: '30' }] }, solutionPrivate: { correctOptionId: 'b', correctFeedback: 'Каждый раз число удваивается.', incorrectFeedback: 'Сравни соседние числа.' }, hints: ['Попробуй умножить последнее число на 2.'] }] }];
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}/api/v1${path}`, {
+  const response = await fetch(`/api/v1${path}`, {
     ...init, credentials: 'include', cache: 'no-store',
     headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });

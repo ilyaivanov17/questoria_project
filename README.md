@@ -32,6 +32,8 @@ Questoria — образовательная игровая платформа �
 Требуются Node.js `22.23.5`, pnpm `12.17.0` и Docker с Compose.
 
 ```bash
+nvm install
+nvm use
 corepack enable
 pnpm install
 cp .env.example .env
@@ -45,7 +47,9 @@ pnpm dev
 После запуска:
 
 - Frontend: http://localhost:3000
-- API health: http://localhost:4000/api/health
+- API health (проверка из терминала): http://localhost:4000/api/health
+
+В GitHub Codespaces браузер обращается к API через same-origin proxy на порту 3000. Порт 4000 не нужно открывать в браузере или прописывать его публичный URL. `API_INTERNAL_URL` должен указывать на `http://localhost:4000`; `WEB_ORIGIN` можно оставить пустым — API автоматически определит forwarded origin Codespaces. Корневой `.env` загружается командами `pnpm dev` и `pnpm db:seed`; копировать его в `apps/api/.env` не требуется.
 
 Команды:
 

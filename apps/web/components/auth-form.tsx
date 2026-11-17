@@ -9,7 +9,6 @@ interface AuthFormProps {
   mode: AuthMode;
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
@@ -26,7 +25,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     setBusy(true);
 
     try {
-      const response = await fetch(`${apiBase}/api/v1/auth/${mode}`, {
+      const response = await fetch(`/api/v1/auth/${mode}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

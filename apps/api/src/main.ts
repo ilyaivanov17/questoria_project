@@ -3,13 +3,14 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { getWebOrigin } from './config/web-origin.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    origin: getWebOrigin(),
     credentials: true,
   });
   app.useGlobalPipes(
