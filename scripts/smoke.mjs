@@ -95,6 +95,22 @@ const expectedAnswers = [
 
 await waitForApi();
 
+const liveness = await request('/api/health', {
+  headers: { 'x-request-id': 'questoria-smoke-0001' },
+});
+assert.equal(liveness.response.status, 200);
+assert.equal(liveness.body?.status, 'ok');
+assert.equal(liveness.response.headers.get('x-request-id'), 'questoria-smoke-0001');
+
+const readiness = await request('/api/health/ready');
+assert.equal(readiness.response.status, 200);
+assert.equal(readiness.body?.status, 'ready');
+assert.equal(readiness.body?.checks?.database, 'ok');
+assert.match(
+  readiness.response.headers.get('x-request-id') ?? '',
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+);
+
 const email = `smoke-${randomUUID()}@questoria.test`;
 const password = 'Questoria-smoke-password-2026';
 const registration = await request('/api/v1/auth/register', {
