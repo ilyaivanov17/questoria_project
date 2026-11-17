@@ -72,7 +72,12 @@ export class EmailService {
 
   private buildActionUrl(path: string, token: string): string {
     const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-    const baseUrl = configuredSiteUrl || getWebOrigin();
+    const detectedOrigin = getWebOrigin();
+    const configuredOrigin = configuredSiteUrl ? new URL(configuredSiteUrl).origin : '';
+    const isLocalPlaceholder =
+      configuredOrigin === 'http://localhost:3000' ||
+      configuredOrigin === 'http://127.0.0.1:3000';
+    const baseUrl = configuredSiteUrl && !isLocalPlaceholder ? configuredSiteUrl : detectedOrigin;
     const url = new URL(path, baseUrl);
     url.searchParams.set('token', token);
     return url.toString();

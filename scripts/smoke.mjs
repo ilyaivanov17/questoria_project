@@ -40,7 +40,7 @@ async function waitForEmailLinks(email, kind, minimum = 1) {
     const log = await readFile(logFile, 'utf8').catch(() => '');
     const messages = [];
 
-    for (const line of log.split('\\n')) {
+    for (const line of log.split('\n')) {
       const marker = 'QUESTORIA_EMAIL ';
       const markerIndex = line.indexOf(marker);
       if (markerIndex < 0) continue;
@@ -411,4 +411,4 @@ const otherCookie = extractCookie(secondLogin.response);
 const forbiddenRun = await request('/api/v1/runs/' + runId, {}, otherCookie);
 assert.equal(forbiddenRun.response.status, 404, 'users must not access another profile run');
 
-process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\\\\n');
+process.stdout.write('Questoria E2E smoke test passed: email verification, password recovery, session revocation, auth, five puzzle types, XP/coin ledger, profile and ownership.\n');
