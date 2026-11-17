@@ -123,6 +123,9 @@ export class AdminMfaService {
     if (!account?.mfaEnabledAt) {
       throw new ConflictException('MFA is not enabled for this account.');
     }
+    if (!user.sessionMfaVerified) {
+      throw new ForbiddenException('Verify MFA for this session before viewing recovery-code status.');
+    }
 
     const remaining = await this.prisma.mfaRecoveryCode.count({
       where: { userId: user.userId },
@@ -202,10 +205,13 @@ export class AdminMfaService {
       await tx.mfaRecoveryCode.createMany({
         data: recovery.hashes.map((codeHash) => ({ userId: user.userId, codeHash })),
       });
-      await tx.session.updateMany({
+      const updatedSession = await tx.session.updateMany({
         where: { id: user.sessionId, userId: user.userId },
         data: { mfaVerifiedAt: verifiedAt },
       });
+      if (updatedSession.count !== 1) {
+        throw new UnauthorizedException('The current session is no longer available.');
+      }
       await tx.adminAuditLog.create({
         data: {
           actorUserId: user.userId,
