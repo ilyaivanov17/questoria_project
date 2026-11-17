@@ -225,6 +225,15 @@ export function AdminClient() {
         <label className="field"><span>Cover URL или /media/ path</span><input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} required/></label>
         <label className="field"><span>Alt обложки</span><input value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} required/></label>
         <label className="field admin-field-wide"><span>Источник лицензии</span><input value={coverLicense} onChange={(e) => setCoverLicense(e.target.value)} required/></label>
+        <div className="admin-cover-preview admin-field-wide">
+          <div className="admin-cover-preview-image">
+            {coverUrl.trim() && (coverUrl.startsWith('/') || coverUrl.startsWith('https://') || coverUrl.startsWith('http://')) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverUrl} alt={coverAlt || 'Предпросмотр обложки квеста'} />
+            ) : <span>Q</span>}
+          </div>
+          <div><p className="eyebrow">LIVE PREVIEW</p><strong>{title || 'Название будущего квеста'}</strong><p>{summary || 'Краткое описание появится здесь.'}</p><small>{coverAlt || 'Alt-текст обложки не задан'} · {coverLicense || 'Источник лицензии не указан'}</small></div>
+        </div>
         <label className="field admin-field-wide"><span>Уровни / головоломки (JSON)</span><textarea className="admin-json-editor" rows={18} spellCheck={false} value={levelsJson} onChange={(e) => setLevelsJson(e.target.value)} required/></label>
         <button className="button button-primary" disabled={busy || !categoryId} type="submit">Сохранить черновик</button>
       </form>

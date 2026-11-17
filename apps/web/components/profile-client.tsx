@@ -10,7 +10,12 @@ interface ProfileData {
   locale: string;
   user: { email: string };
   wallet: { xp: number; coins: number };
-  stats: { completedQuests: number; completedRuns: number; activeRuns: number };
+  stats: { completedQuests: number; completedRuns: number; activeRuns: number; completedLevels: number };
+  progression: {
+    level: number; totalXp: number; xpIntoLevel: number; xpForNextLevel: number;
+    xpToNextLevel: number; progressPercent: number; unlockedAchievements: number;
+    achievements: Array<{ id: string; title: string; description: string; icon: string; unlocked: boolean }>;
+  };
 }
 
 interface ProgressData {
@@ -111,6 +116,20 @@ export function ProfileClient() {
     });
   }, [loadProfile]);
 
+  async function logout() {
+    setSaving(true);
+    setError('');
+    try {
+      await fetchJson('/auth/logout', { method: 'POST' });
+      router.replace('/');
+      router.refresh();
+    } catch (logoutError) {
+      setError(logoutError instanceof Error ? logoutError.message : 'Не удалось завершить сессию.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -159,6 +178,7 @@ export function ProfileClient() {
         <nav className="simple-nav" aria-label="Основная навигация">
           <Link href="/quests">Квесты</Link>
           <Link href="/profile" aria-current="page">Профиль</Link>
+          <button className="button button-secondary button-logout" type="button" disabled={saving} onClick={() => void logout()}>Выйти</button>
         </nav>
       </header>
 
@@ -168,7 +188,19 @@ export function ProfileClient() {
           <p className="eyebrow">ТВОЙ ПРОГРЕСС</p>
           <h1>{profile.nickname || 'Исследователь'}</h1>
           <p className="muted-copy">{profile.user.email}</p>
+          <span className="level-pill">УРОВЕНЬ {profile.progression.level}</span>
         </div>
+      </section>
+
+      <section className="player-level-card" aria-label="Уровень игрока">
+        <div className="player-level-heading">
+          <div><p className="eyebrow">ТВОЙ УРОВЕНЬ</p><h2>Исследователь · уровень {profile.progression.level}</h2></div>
+          <strong>{profile.progression.totalXp.toLocaleString('ru-RU')} XP</strong>
+        </div>
+        <div className="xp-progress-track" role="progressbar" aria-valuenow={profile.progression.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс до следующего уровня">
+          <span style={{ width: `${profile.progression.progressPercent}%` }} />
+        </div>
+        <p>{profile.progression.xpIntoLevel} / {profile.progression.xpForNextLevel} XP на этом уровне · ещё {profile.progression.xpToNextLevel} XP до следующего</p>
       </section>
 
       <section className="economy-grid" aria-label="Баланс и достижения">
@@ -191,6 +223,22 @@ export function ProfileClient() {
         <article><strong>{progress.stats.completedRuns}</strong><span>Завершённых сессий</span></article>
         <article><strong>{progress.stats.activeRuns}</strong><span>Активных миссий</span></article>
         <article><strong>{progress.stats.completedLevels}</strong><span>Пройденных этапов</span></article>
+      </section>
+
+      <section className="profile-section achievement-section">
+        <div className="profile-section-heading">
+          <div><p className="eyebrow">ТВОИ ДОСТИЖЕНИЯ</p><h2>Значки исследователя</h2></div>
+          <span className="achievement-count">{profile.progression.unlockedAchievements} / {profile.progression.achievements.length}</span>
+        </div>
+        <div className="achievement-grid">
+          {profile.progression.achievements.map((achievement) => (
+            <article className={achievement.unlocked ? 'achievement-card unlocked' : 'achievement-card locked'} key={achievement.id}>
+              <span className="achievement-icon">{achievement.unlocked ? achievement.icon : '◇'}</span>
+              <div><strong>{achievement.title}</strong><p>{achievement.description}</p></div>
+              <span className="achievement-state">{achievement.unlocked ? 'Получено' : 'Впереди'}</span>
+            </article>
+          ))}
+        </div>
       </section>
 
       <div className="profile-columns">

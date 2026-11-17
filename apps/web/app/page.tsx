@@ -28,8 +28,9 @@ export default function HomePage() {
         </Link>
         <nav className="simple-nav" aria-label="Основная навигация">
           <Link href="/quests">Квесты</Link>
+          <Link href="/profile">Мой прогресс</Link>
           <Link href="/login">Войти</Link>
-          <Link className="nav-cta" href="/register">Регистрация</Link>
+          <Link className="nav-cta" href="/register">Начать</Link>
         </nav>
       </header>
 
@@ -70,8 +71,9 @@ export default function HomePage() {
             <span className="map-card-label">ТВОЯ СЛЕДУЮЩАЯ МИССИЯ</span>
             <span className="map-card-icon">⌘</span>
             <strong>Тайна пропавшего числа</strong>
-            <span className="map-card-meta">Логика · 8 минут</span>
+            <span className="map-card-meta">Логика · 5 испытаний</span>
             <span className="map-progress"><span /></span>
+            <span className="map-card-reward">✦ 40 XP · ◈ 15 монет за первое прохождение</span>
           </div>
           <span className="sparkle sparkle-one">✧</span>
           <span className="sparkle sparkle-two">✳</span>
@@ -95,9 +97,17 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="home-feature-strip" aria-label="Возможности Questoria">
+        <article><span>01</span><strong>Пять форматов задач</strong><p>Выбирай ответ, вводи число или текст, находи порядок и связи.</p></article>
+        <article><span>02</span><strong>Подсказки по пути</strong><p>Открывай идеи постепенно и возвращайся к объяснениям после ответа.</p></article>
+        <article><span>03</span><strong>Прогресс и награды</strong><p>Сохраняй прохождения, копи XP и открывай достижения исследователя.</p></article>
+      </section>
+      <section className="home-cta">
+        <div><p className="eyebrow">ПЕРВАЯ МИССИЯ УЖЕ ЖДЁТ</p><h2>Открой закономерность. Получи свою первую награду.</h2><p>Пройди пять испытаний в квесте «Тайна пропавшего числа» и сохрани результат в профиле.</p></div>
+        <Link className="button button-primary" href="/quests">В каталог миссий <span aria-hidden="true">→</span></Link>
+      </section>
       <footer className="footer">
-        <span>Questoria © {new Date().getFullYear()}</span>
-        <span>Создаём основу для первого квеста</span>
+        <span>Questoria © {new Date().getFullYear()}</span><span>Учись исследуя</span>
       </footer>
     </main>
   );
