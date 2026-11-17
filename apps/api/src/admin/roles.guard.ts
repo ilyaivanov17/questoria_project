@@ -7,7 +7,7 @@ import { REQUIRED_ROLES_KEY } from './roles.decorator.js';
 const ROLE_IMPLICATIONS: Record<string, string[]> = {
   AUTHOR: ['AUTHOR'],
   REVIEWER: ['AUTHOR', 'REVIEWER'],
-  ADMIN: ['AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN', 'AUDIT'],
+  ADMIN: ['AUTHOR', 'REVIEWER', 'ADMIN', 'AUDIT'],
   SUPER_ADMIN: ['AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN', 'AUDIT'],
 };
 

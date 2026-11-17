@@ -173,10 +173,10 @@ model QuestVersion {
   publishedById String?          @db.Uuid @map("published_by_id")
   approvedAt DateTime?           @map("approved_at")
   updatedAt DateTime             @updatedAt @map("updated_at")
-  author User?                   @relation("QuestVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reviewer User?                 @relation("QuestVersionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
-  approvedBy User?               @relation("QuestVersionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  publishedBy User?              @relation("QuestVersionPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  author User?                   @relation("QuestVersionAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  reviewer User?                 @relation("QuestVersionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  approvedBy User?               @relation("QuestVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  publishedBy User?              @relation("QuestVersionPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   quest       Quest              @relation(fields: [questId], references: [id], onDelete: Restrict)
   levels      Level[]
   runs        QuestRun[]
@@ -336,7 +336,7 @@ model AdminAuditLog {
   afterJson   Json?    @map("after_json")
   reason      String?
   createdAt   DateTime @default(now()) @map("created_at")
-  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@index([entityType, entityId, createdAt])
   @@index([actorUserId, createdAt])

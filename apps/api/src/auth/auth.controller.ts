@@ -84,6 +84,9 @@ export class AuthController {
         id: user.userId,
         email: user.email,
         nickname: user.nickname,
+        roles: user.roleKeys,
+        mfaEnabled: user.mfaEnabled,
+        mfaVerified: user.sessionMfaVerified,
       },
     };
   }

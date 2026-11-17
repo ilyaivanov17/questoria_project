@@ -108,6 +108,18 @@ export class AdminService {
     });
   }
 
+  async publishCategory(user: AuthenticatedUser, id: string): Promise<object> {
+    const current = await this.prisma.category.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Category not found.');
+    if (current.status === 'ARCHIVED') throw new ConflictException('Archived categories cannot be published.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.category.update({ where: { id }, data: { status: 'PUBLISHED' } });
+      await this.audit(tx, user.userId, 'category.published', 'CATEGORY', id, current, updated);
+      return { id: updated.id, status: updated.status };
+    });
+  }
+
   async listQuests(): Promise<object[]> {
     const quests = await this.prisma.quest.findMany({
       orderBy: { updatedAt: 'desc' },
@@ -220,8 +232,21 @@ export class AdminService {
       });
       if (!category) throw new BadRequestException('Choose an active published category.');
     }
-    if (dto.ageMin !== undefined && dto.ageMax !== undefined && dto.ageMin > dto.ageMax) {
+    const latestAge = await this.prisma.questVersion.findFirst({
+      where: { questId: id },
+      orderBy: { versionNo: 'desc' },
+      select: { ageMin: true, ageMax: true },
+    });
+    if (latestAge && (dto.ageMin ?? latestAge.ageMin) > (dto.ageMax ?? latestAge.ageMax)) {
       throw new BadRequestException('Minimum age cannot exceed maximum age.');
+    }
+    if (dto.coverUrl !== undefined) this.validateCover(dto.coverUrl);
+    if (dto.slug !== undefined) {
+      const published = await this.prisma.questVersion.findFirst({
+        where: { questId: id, status: 'PUBLISHED' },
+        select: { id: true },
+      });
+      if (published) throw new ConflictException('A public quest slug cannot be changed after the first publication.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -309,14 +334,14 @@ export class AdminService {
           summary: source.summary,
           description: source.description,
           internalName: source.internalName,
-          objectives: source.objectives,
+          objectives: jsonInput(source.objectives),
           skills: source.skills,
           ageMin: source.ageMin,
           ageMax: source.ageMax,
           difficulty: source.difficulty,
           durationMin: source.durationMin,
           locale: source.locale,
-          seo: source.seo ?? undefined,
+          ...(source.seo !== null ? { seo: jsonInput(source.seo) } : {}),
           coverUrl: source.coverUrl,
           coverAlt: source.coverAlt,
           coverLicenseSource: source.coverLicenseSource,
@@ -366,34 +391,29 @@ export class AdminService {
   }
 
   async approveQuest(user: AuthenticatedUser, id: string): Promise<object> {
-    const version = await this.prisma.questVersion.findFirst({
-      where: { questId: id, status: 'REVIEW' },
-      orderBy: { versionNo: 'desc' },
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.questVersion.findFirst({
+        where: { questId: id, status: 'REVIEW' },
+        orderBy: { versionNo: 'desc' },
+      });
+      if (!version) throw new ConflictException('A quest in REVIEW state was not found.');
+      if (version.authorId && version.authorId === user.userId) {
+        throw new ForbiddenException('Authors cannot approve their own content.');
+      }
+      const updated = await tx.questVersion.update({
+        where: { id: version.id },
+        data: {
+          status: 'APPROVED',
+          reviewerId: user.userId,
+          approvedById: user.userId,
+          approvedAt: new Date(),
+        },
+      });
+      await this.audit(tx, user.userId, 'quest.approved', 'QUEST', id, {
+        versionId: version.id, status: version.status,
+      }, { versionId: updated.id, status: updated.status, reviewerId: user.userId });
+      return { id, versionId: updated.id, versionNo: updated.versionNo, status: updated.status };
     });
-    if (!version) throw new ConflictException('A quest in REVIEW state was not found.');
-    if (version.authorId && version.authorId === user.userId) {
-      throw new ForbiddenException('Authors cannot approve their own content.');
-    }
-    const updated = await this.prisma.questVersion.update({
-      where: { id: version.id },
-      data: {
-        status: 'APPROVED',
-        reviewerId: user.userId,
-        approvedById: user.userId,
-        approvedAt: new Date(),
-      },
-    });
-    await this.prisma.adminAuditLog.create({
-      data: {
-        actorUserId: user.userId,
-        action: 'quest.approved',
-        entityType: 'QUEST',
-        entityId: id,
-        beforeJson: jsonInput({ versionId: version.id, status: version.status }),
-        afterJson: jsonInput({ versionId: updated.id, status: updated.status, reviewerId: user.userId }),
-      },
-    });
-    return { id, versionId: updated.id, versionNo: updated.versionNo, status: updated.status };
   }
 
   async publishQuest(user: AuthenticatedUser, id: string): Promise<object> {

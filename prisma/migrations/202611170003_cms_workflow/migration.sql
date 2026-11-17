@@ -23,13 +23,13 @@ ALTER TABLE "quest_versions"
 
 ALTER TABLE "quest_versions"
   ADD CONSTRAINT "quest_versions_author_id_fkey"
-    FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "quest_versions_reviewer_id_fkey"
-    FOREIGN KEY ("reviewer_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    FOREIGN KEY ("reviewer_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "quest_versions_approved_by_id_fkey"
-    FOREIGN KEY ("approved_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    FOREIGN KEY ("approved_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "quest_versions_published_by_id_fkey"
-    FOREIGN KEY ("published_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    FOREIGN KEY ("published_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE TABLE "admin_audit_logs" (
   "id" UUID NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE "admin_audit_logs" (
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "admin_audit_logs_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "admin_audit_logs_actor_user_id_fkey"
-    FOREIGN KEY ("actor_user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE
+    FOREIGN KEY ("actor_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE INDEX "admin_audit_logs_entity_type_entity_id_created_at_idx"
@@ -78,27 +78,23 @@ CREATE TRIGGER "quest_versions_published_immutable"
 BEFORE UPDATE OR DELETE ON "quest_versions"
 FOR EACH ROW EXECUTE FUNCTION "questoria_guard_published_quest_version"();
 
-CREATE OR REPLACE FUNCTION "questoria_is_published_parent"(table_name TEXT, row_id UUID)
+CREATE OR REPLACE FUNCTION "questoria_child_parent_is_published"(table_name TEXT, parent_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE published BOOLEAN;
 BEGIN
   IF table_name = 'levels' THEN
+    SELECT "status" = 'PUBLISHED' INTO published
+    FROM "quest_versions" WHERE "id" = parent_id;
+  ELSIF table_name = 'puzzles' THEN
     SELECT qv."status" = 'PUBLISHED' INTO published
     FROM "levels" l JOIN "quest_versions" qv ON qv."id" = l."quest_version_id"
-    WHERE l."id" = row_id;
-  ELSIF table_name = 'puzzles' THEN
+    WHERE l."id" = parent_id;
+  ELSIF table_name = 'hints' THEN
     SELECT qv."status" = 'PUBLISHED' INTO published
     FROM "puzzles" p
     JOIN "levels" l ON l."id" = p."level_id"
     JOIN "quest_versions" qv ON qv."id" = l."quest_version_id"
-    WHERE p."id" = row_id;
-  ELSIF table_name = 'hints' THEN
-    SELECT qv."status" = 'PUBLISHED' INTO published
-    FROM "hints" h
-    JOIN "puzzles" p ON p."id" = h."puzzle_id"
-    JOIN "levels" l ON l."id" = p."level_id"
-    JOIN "quest_versions" qv ON qv."id" = l."quest_version_id"
-    WHERE h."id" = row_id;
+    WHERE p."id" = parent_id;
   END IF;
   RETURN COALESCE(published, FALSE);
 END;
@@ -106,14 +102,24 @@ $$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION "questoria_guard_published_child"()
 RETURNS trigger AS $$
+DECLARE old_parent UUID;
+DECLARE new_parent UUID;
 BEGIN
-  IF TG_OP IN ('UPDATE', 'DELETE') AND
-     "questoria_is_published_parent"(TG_TABLE_NAME, OLD."id") THEN
-    RAISE EXCEPTION 'Published quest content cannot be changed; create a new version';
+  IF TG_TABLE_NAME = 'levels' THEN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN old_parent := OLD."quest_version_id"; END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN new_parent := NEW."quest_version_id"; END IF;
+  ELSIF TG_TABLE_NAME = 'puzzles' THEN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN old_parent := OLD."level_id"; END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN new_parent := NEW."level_id"; END IF;
+  ELSIF TG_TABLE_NAME = 'hints' THEN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN old_parent := OLD."puzzle_id"; END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN new_parent := NEW."puzzle_id"; END IF;
   END IF;
 
-  IF TG_OP IN ('INSERT', 'UPDATE') AND
-     "questoria_is_published_parent"(TG_TABLE_NAME, NEW."id") THEN
+  IF old_parent IS NOT NULL AND "questoria_child_parent_is_published"(TG_TABLE_NAME, old_parent) THEN
+    RAISE EXCEPTION 'Published quest content cannot be changed; create a new version';
+  END IF;
+  IF new_parent IS NOT NULL AND "questoria_child_parent_is_published"(TG_TABLE_NAME, new_parent) THEN
     RAISE EXCEPTION 'Published quest content cannot be changed; create a new version';
   END IF;
 

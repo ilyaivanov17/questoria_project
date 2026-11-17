@@ -58,6 +58,15 @@ export class AdminContentController {
     return this.admin.archiveCategory(request.authUser as AuthenticatedUser, id);
   }
 
+  @Post('categories/:id/publish')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  publishCategory(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<object> {
+    return this.admin.publishCategory(request.authUser as AuthenticatedUser, id);
+  }
+
   @Get('quests')
   @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
   listQuests(): Promise<object[]> {
