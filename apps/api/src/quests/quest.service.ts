@@ -12,7 +12,7 @@ import type { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
 import type { StartRunDto } from './dto/start-run.dto.js';
 import { asJsonRecord, asOptionList } from './json.js';
 import { buildPuzzleReview, validatePuzzleAnswer } from './puzzle-validator.js';
-import type { PuzzleAnswerReview, PuzzleAttemptResponse } from '@questoria/contracts';
+import type { PuzzleAnswerReview, PuzzleAttemptResponse, RunPuzzleReview } from '@questoria/contracts';
 import {
   getNextAvailablePuzzle,
   getResolvedPuzzleIds,
@@ -249,10 +249,12 @@ export class QuestService {
     const exhaustedPuzzle = latestExhaustedAttempt
       ? puzzles.find(({ puzzle }) => puzzle.id === latestExhaustedAttempt.puzzleId)?.puzzle
       : undefined;
-    const lastReview = latestExhaustedAttempt && exhaustedPuzzle
+    const lastReview: RunPuzzleReview | null = latestExhaustedAttempt && exhaustedPuzzle
       ? {
         puzzleId: exhaustedPuzzle.id,
-        prompt: asJsonRecord(exhaustedPuzzle.publicPayload).prompt,
+        prompt: typeof asJsonRecord(exhaustedPuzzle.publicPayload).prompt === 'string'
+          ? asJsonRecord(exhaustedPuzzle.publicPayload).prompt as string
+          : '',
         ...buildPuzzleReview(
           exhaustedPuzzle.type,
           exhaustedPuzzle.publicPayload,
