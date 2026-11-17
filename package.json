@@ -19,7 +19,9 @@
     "db:deploy": "prisma migrate deploy --config prisma7.config.ts",
     "db:studio": "prisma studio --config prisma7.config.ts",
     "db:seed": "node scripts/with-env.mjs pnpm --filter @questoria/api seed",
-    "test": "pnpm --recursive --if-present test"
+    "test": "pnpm --recursive --if-present test",
+    "db:backup": "node scripts/with-env.mjs bash scripts/db-backup.sh",
+    "db:restore": "node scripts/with-env.mjs bash scripts/db-restore.sh"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

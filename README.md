@@ -171,3 +171,18 @@ CMS доступна по `/admin`. Назначение ролей выполн
 - API пишет однострочные JSON access logs с request ID, HTTP-методом, шаблоном маршрута, статусом и длительностью. Query string, тело запроса, cookies, заголовок Authorization и IP-адреса в access log не включаются.
 
 Для uptime monitoring используй `/api/health/ready`; `/api/health` подходит только для проверки живости процесса.
+
+
+## Резервное копирование и восстановление PostgreSQL
+
+Для локальной PostgreSQL в Docker Compose:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d postgres
+pnpm run db:backup -- backups/questoria-before-change.dump
+ALLOW_DATABASE_RESTORE=1 pnpm run db:restore -- backups/questoria-before-change.dump --confirm-database questoria
+```
+
+Backup сохраняется в custom-формате PostgreSQL и сопровождается SHA-256-файлом; архив проверяется до завершения операции. Restore требует отдельного подтверждения точного имени базы, заменяет объекты из архива и запрещён при `NODE_ENV=production`. Не запускай восстановление при работающем приложении или без понимания потери изменений после даты backup.
+
+Подробности и CI-сценарий восстановления в отдельную базу: [runbook PostgreSQL](docs/operations/postgres-backup-restore.md). Это локальный инструмент, а не production backup service: перед публичной бетой нужно включить управляемые резервные копии, шифрование, off-site retention и PITR у провайдера базы.
