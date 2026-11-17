@@ -26,7 +26,11 @@ export default function HomePage() {
           <span className="brand-mark">Q</span>
           <span>questoria</span>
         </Link>
-        <span className="topbar-note">Платформа в разработке</span>
+        <nav className="simple-nav" aria-label="Основная навигация">
+          <Link href="/quests">Квесты</Link>
+          <Link href="/login">Войти</Link>
+          <Link className="nav-cta" href="/register">Регистрация</Link>
+        </nav>
       </header>
 
       <section className="hero">
