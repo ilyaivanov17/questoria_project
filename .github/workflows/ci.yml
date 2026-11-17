@@ -50,6 +50,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Shell syntax check
+        run: bash -n scripts/db-backup.sh scripts/db-restore.sh
+
       - name: Lint
         run: pnpm lint
 
@@ -67,6 +70,10 @@ jobs:
           set -euo pipefail
           docker compose -f infra/docker/docker-compose.yml exec -T postgres createdb -U questoria questoria_restore_check
           pnpm run db:backup -- /tmp/questoria-ci.dump
+          if ALLOW_DATABASE_RESTORE=0 pnpm run db:restore -- /tmp/questoria-ci.dump --confirm-database questoria_restore_check; then
+            echo "Restore safety gate did not block an unapproved restore." >&2
+            exit 1
+          fi
           ALLOW_DATABASE_RESTORE=1 DATABASE_URL="postgresql://questoria:questoria_local_only@localhost:5432/questoria_restore_check?schema=public" pnpm run db:restore -- /tmp/questoria-ci.dump --confirm-database questoria_restore_check
           source_counts="$(docker compose -f infra/docker/docker-compose.yml exec -T postgres psql -U questoria -d questoria -Atqc "SELECT (SELECT COUNT(*) FROM quests)::text || ':' || (SELECT COUNT(*) FROM categories)::text || ':' || (SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL)::text")"
           restored_counts="$(docker compose -f infra/docker/docker-compose.yml exec -T postgres psql -U questoria -d questoria_restore_check -Atqc "SELECT (SELECT COUNT(*) FROM quests)::text || ':' || (SELECT COUNT(*) FROM categories)::text || ':' || (SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL)::text")"
