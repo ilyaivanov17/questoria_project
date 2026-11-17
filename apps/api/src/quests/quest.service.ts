@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -388,7 +389,7 @@ export class QuestService {
             });
             await tx.levelProgress.createMany({
               data: [{
-                id: crypto.randomUUID(),
+                id: randomUUID(),
                 questRunId: runId,
                 levelId: puzzle.levelId,
                 status: 'COMPLETED',
@@ -444,7 +445,7 @@ export class QuestService {
 
             const completion = await tx.questCompletion.createMany({
               data: [{
-                id: crypto.randomUUID(),
+                id: randomUUID(),
                 profileId,
                 questVersionId: activeRun.questVersionId,
                 questRunId: runId,
@@ -551,7 +552,7 @@ export class QuestService {
             },
           },
         });
-        if (retry) return this.validateAndReturnDuplicate(retry, profileId, runId, puzzleId, dto);
+        if (retry) return this.validateAndReturnDuplicate(retry, runId, puzzleId, dto);
       }
       if (this.isPrismaCode(error, 'P2034')) {
         throw new ConflictException('The attempt was processed concurrently. Retry with the same attemptId.');
@@ -575,7 +576,6 @@ export class QuestService {
       runCompleted: boolean;
       questFirstCompletion: boolean;
     },
-    profileId: string,
     runId: string,
     puzzleId: string,
     dto: SubmitAttemptDto,
