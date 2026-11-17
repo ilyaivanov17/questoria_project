@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 12 blocks dependency lifecycle scripts unless explicitly approved.
+# Prisma requires its engine and CLI install scripts to prepare the local toolchain.
+allowBuilds:
+  "@prisma/engines": true
+  "esbuild": true
+  "prisma": true

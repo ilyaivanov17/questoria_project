@@ -1,0 +1,5 @@
+ALTER TABLE "puzzle_attempts"
+  ADD COLUMN "xp_awarded" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "coins_awarded" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "run_completed" BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN "quest_first_completion" BOOLEAN NOT NULL DEFAULT FALSE;

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate monorepo
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: questoria
+          POSTGRES_USER: questoria
+          POSTGRES_PASSWORD: questoria_local_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U questoria -d questoria"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://questoria:questoria_local_only@localhost:5432/questoria?schema=public
+      WEB_ORIGIN: http://localhost:3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.17.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Replace with --frozen-lockfile after the first pnpm install
+      # and commit of pnpm-lock.yaml.
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Validate Prisma schema
+        run: pnpm db:generate
+
+      - name: Apply database migrations
+        run: pnpm db:deploy
+
+      - name: Seed the demo quest
+        run: pnpm db:seed
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Start API for smoke test
+        run: |
+          pnpm --filter @questoria/api start > /tmp/questoria-api.log 2>&1 &
+          echo "$!" > /tmp/questoria-api.pid
+
+      - name: End-to-end smoke test
+        run: node scripts/smoke.mjs
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/questoria-api.pid ]; then
+            kill "$(cat /tmp/questoria-api.pid)" || true
+          fi
