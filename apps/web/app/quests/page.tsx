@@ -52,6 +52,7 @@ export default async function QuestsPage() {
         </Link>
         <nav className="simple-nav" aria-label="Основная навигация">
           <Link href="/login">Войти</Link>
+          <Link href="/profile">Профиль</Link>
           <Link className="nav-cta" href="/register">Регистрация</Link>
         </nav>
       </header>
