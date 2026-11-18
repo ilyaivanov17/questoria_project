@@ -339,6 +339,169 @@ export class AdminService {
     };
   }
 
+
+  async getTaskLearningAnalytics(): Promise<object> {
+    const [groups, puzzleRows, skillRows] = await Promise.all([
+      this.prisma.learningEvidence.groupBy({
+        by: ['puzzleId', 'skillId', 'profileId', 'taskType', 'isCorrect'],
+        _count: { _all: true },
+      }),
+      this.prisma.puzzle.findMany({
+        where: { learningEvidence: { some: {} } },
+        select: {
+          id: true,
+          orderNo: true,
+          type: true,
+          level: {
+            select: {
+              orderNo: true,
+              title: true,
+              questVersion: {
+                select: {
+                  id: true,
+                  versionNo: true,
+                  title: true,
+                  quest: { select: { slug: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.skill.findMany({ select: { id: true, key: true, name: true } }),
+    ]);
+
+    const profileIds = [...new Set(groups.map((group) => group.profileId))];
+    const skillIds = [...new Set(groups.map((group) => group.skillId))];
+    const progressRows = profileIds.length && skillIds.length
+      ? await this.prisma.profileSkillProgress.findMany({
+          where: { profileId: { in: profileIds }, skillId: { in: skillIds } },
+          select: { profileId: true, skillId: true, status: true },
+        })
+      : [];
+    const statusByLearnerSkill = new Map(
+      progressRows.map((row) => [`${row.profileId}:${row.skillId}`, row.status]),
+    );
+    const puzzleById = new Map(puzzleRows.map((puzzle) => [puzzle.id, puzzle]));
+    const skillById = new Map(skillRows.map((skill) => [skill.id, skill]));
+
+    type Metric = {
+      attempts: number;
+      successful: number;
+      learners: Set<string>;
+      taskTypes: Set<string>;
+      mastered: { attempts: number; successful: number; learners: Set<string> };
+      notMastered: { attempts: number; successful: number; learners: Set<string> };
+    };
+    const metrics = new Map<string, Metric>();
+    for (const group of groups) {
+      const key = `${group.puzzleId}:${group.skillId}`;
+      const metric = metrics.get(key) ?? {
+        attempts: 0,
+        successful: 0,
+        learners: new Set<string>(),
+        taskTypes: new Set<string>(),
+        mastered: { attempts: 0, successful: 0, learners: new Set<string>() },
+        notMastered: { attempts: 0, successful: 0, learners: new Set<string>() },
+      };
+      const count = group._count._all;
+      const mastered = statusByLearnerSkill.get(`${group.profileId}:${group.skillId}`) === 'MASTERED';
+      metric.attempts += count;
+      if (group.isCorrect) metric.successful += count;
+      metric.learners.add(group.profileId);
+      metric.taskTypes.add(group.taskType);
+      const cohort = mastered ? metric.mastered : metric.notMastered;
+      cohort.attempts += count;
+      if (group.isCorrect) cohort.successful += count;
+      cohort.learners.add(group.profileId);
+      metrics.set(key, metric);
+    }
+
+    const tasks = [...metrics.entries()].map(([key, metric]) => {
+      const [puzzleId, skillId] = key.split(':');
+      const puzzle = puzzleById.get(puzzleId);
+      const skill = skillById.get(skillId);
+      const successRate = metric.attempts
+        ? Math.round((metric.successful / metric.attempts) * 100)
+        : null;
+      const masteredRate = metric.mastered.attempts
+        ? (metric.mastered.successful / metric.mastered.attempts) * 100
+        : null;
+      const notMasteredRate = metric.notMastered.attempts
+        ? (metric.notMastered.successful / metric.notMastered.attempts) * 100
+        : null;
+      const separation = masteredRate !== null && notMasteredRate !== null
+        ? Math.round(masteredRate - notMasteredRate)
+        : null;
+      const qualitySignals: string[] = [];
+      if (metric.attempts > 0 && metric.attempts < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (metric.attempts >= 10 && successRate !== null && successRate < 40) {
+        qualitySignals.push('LOW_SUCCESS_RATE');
+      }
+      if (
+        metric.mastered.attempts >= 5
+        && metric.notMastered.attempts >= 5
+        && separation !== null
+        && Math.abs(separation) < 10
+      ) {
+        qualitySignals.push('LOW_MASTERY_SEPARATION');
+      }
+      return {
+        puzzleId,
+        puzzleOrder: puzzle?.orderNo ?? null,
+        puzzleType: puzzle?.type ?? [...metric.taskTypes][0] ?? null,
+        levelOrder: puzzle?.level.orderNo ?? null,
+        levelTitle: puzzle?.level.title ?? null,
+        questVersionId: puzzle?.level.questVersion.id ?? null,
+        questVersion: puzzle?.level.questVersion.versionNo ?? null,
+        questTitle: puzzle?.level.questVersion.title ?? null,
+        questSlug: puzzle?.level.questVersion.quest.slug ?? null,
+        skillId,
+        skillKey: skill?.key ?? null,
+        skillName: skill?.name ?? null,
+        attempts: metric.attempts,
+        successful: metric.successful,
+        successRate,
+        learners: metric.learners.size,
+        taskTypeCount: metric.taskTypes.size,
+        masteryDiscrimination: {
+          mastered: {
+            attempts: metric.mastered.attempts,
+            learners: metric.mastered.learners.size,
+            successRate: masteredRate === null ? null : Math.round(masteredRate),
+          },
+          notMastered: {
+            attempts: metric.notMastered.attempts,
+            learners: metric.notMastered.learners.size,
+            successRate: notMasteredRate === null ? null : Math.round(notMasteredRate),
+          },
+          successRateGap: separation,
+        },
+        qualitySignals,
+      };
+    }).sort((left, right) => (
+      (left.successRate ?? 101) - (right.successRate ?? 101)
+      || left.questSlug?.localeCompare(right.questSlug ?? '') || 0
+      || (left.levelOrder ?? 0) - (right.levelOrder ?? 0)
+      || (left.puzzleOrder ?? 0) - (right.puzzleOrder ?? 0)
+    ));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        puzzleSkillPairs: tasks.length,
+        attempts: tasks.reduce((sum, task) => sum + task.attempts, 0),
+        learners: new Set(groups.map((group) => group.profileId)).size,
+        flagged: tasks.filter((task) => task.qualitySignals.length > 0).length,
+      },
+      tasks,
+      notes: {
+        masteryCohorts: 'Mastery cohorts use each learner skill current status, not historical status at attempt time.',
+        lowMasterySeparation: 'LOW_MASTERY_SEPARATION is evaluated only when both cohorts have at least five evidence observations.',
+      },
+    };
+  }
+
   async createSkill(user: AuthenticatedUser, dto: CreateSkillDto): Promise<object> {
     try {
       return await this.prisma.$transaction(async (tx) => {
