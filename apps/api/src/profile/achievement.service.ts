@@ -62,7 +62,7 @@ export class AchievementService {
     const history = achievements
       .filter((achievement) => achievement.unlocked)
       .sort((left, right) => (
-        (left.awardedAt ?? '').localeCompare(right.awardedAt ?? '')
+        (right.awardedAt ?? '').localeCompare(left.awardedAt ?? '')
       ));
 
     return {
