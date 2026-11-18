@@ -16,7 +16,7 @@ function puzzle(orderNo: number, type: 'single_choice' | 'numeric_input') {
     maxAttempts: 2,
     maxScore: 10,
     publicPayload: type === 'single_choice'
-      ? { options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] }
+      ? { options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }
       : {},
     solutionPrivate: type === 'single_choice'
       ? { correctOptionId: 'a', correctFeedback: 'Правильное объяснение.' }
