@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {
   getEvidenceTypeLabel,
   getSkillStatusLabel,
@@ -30,6 +31,12 @@ export interface PlayerSkillItem {
   firstPracticedAt: string | null;
   lastPracticedAt: string | null;
   masteredAt: string | null;
+  recommendedQuests: Array<{
+    slug: string;
+    title: string;
+    difficulty: string | null;
+    durationMin: number;
+  }>;
 }
 
 export interface PlayerLearningEvidence {
@@ -129,6 +136,30 @@ export function SkillProgressSection({
                 ) : (
                   <p className="skill-not-started">Осваивай навык в доступных миссиях — история появится после первых ответов.</p>
                 )}
+                {skill.available && skill.status !== 'mastered' ? (
+                  <div className="skill-next-step">
+                    <span className="skill-next-step-label">Следующий шаг</span>
+                    {skill.recommendedQuests.length ? (
+                      <div className="skill-next-step-links">
+                        {skill.recommendedQuests.slice(0, 2).map((quest) => (
+                          <Link
+                            className="skill-next-step-link"
+                            href={`/quests/${encodeURIComponent(quest.slug)}`}
+                            key={quest.slug}
+                          >
+                            <span>
+                              <strong>{quest.title}</strong>
+                              <small>{quest.durationMin} мин · {quest.difficulty ?? 'Любая сложность'}</small>
+                            </span>
+                            <b aria-hidden="true">→</b>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="skill-not-started">Подходящая опубликованная миссия пока не найдена.</p>
+                    )}
+                  </div>
+                ) : null}
                 {skill.prerequisites.length ? (
                   <div className="skill-prerequisites">
                     <span>Нужно освоить:</span>

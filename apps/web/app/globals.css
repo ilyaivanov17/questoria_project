@@ -2745,6 +2745,59 @@ summary:focus-visible {
   font-size: 10px;
   font-weight: 700;
 }
+.skill-next-step {
+  display: grid;
+  gap: 8px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+.skill-next-step-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.skill-next-step-links {
+  display: grid;
+  gap: 7px;
+}
+.skill-next-step-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid #e8e6f3;
+  border-radius: 11px;
+  background: #faf9ff;
+  color: var(--ink);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.skill-next-step-link:hover {
+  border-color: #c9c3ef;
+  background: #f3f1ff;
+}
+.skill-next-step-link > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.skill-next-step-link strong {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.skill-next-step-link small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.skill-next-step-link b {
+  flex: 0 0 auto;
+  color: var(--purple);
+  font-size: 15px;
+}
 .skill-prerequisites {
   display: flex;
   flex-wrap: wrap;
