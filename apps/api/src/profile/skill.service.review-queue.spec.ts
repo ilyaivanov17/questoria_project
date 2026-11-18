@@ -10,6 +10,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 function createReviewQueueService() {
   const transactionOptions: Array<{ isolationLevel?: string }> = [];
   const groupByCalls: unknown[] = [];
+  const rawQueryCalls: unknown[] = [];
   const tx = {
     skill: {
       findMany: async () => [
@@ -36,20 +37,39 @@ function createReviewQueueService() {
         },
       ],
     },
+    $queryRaw: async () => {
+      rawQueryCalls.push('latest-success');
+      return [
+        {
+          skillId: 'skill-1',
+          occurredAt: new Date(now.getTime() - 2 * dayMs),
+          questSlug: 'critical-thinking-expedition',
+        },
+        {
+          skillId: 'skill-2',
+          occurredAt: new Date(now.getTime() - 3 * dayMs),
+          questSlug: 'locked-logic-mission',
+        },
+      ];
+    },
     learningEvidence: {
       groupBy: async (args: { where: { evidenceType?: string } }) => {
         groupByCalls.push(args);
         if (args.where.evidenceType === 'DELAYED_CHECK') {
           return [{ skillId: 'skill-1', _count: { _all: 1 } }];
         }
-        return [
-          { skillId: 'skill-1', _max: { occurredAt: new Date(now.getTime() - 2 * dayMs) } },
-          { skillId: 'skill-2', _max: { occurredAt: new Date(now.getTime() - 3 * dayMs) } },
-        ];
+        return [];
       },
     },
     questVersion: {
       findMany: async () => [
+        {
+          title: 'Альтернативная логическая миссия',
+          difficulty: 'intermediate',
+          durationMin: 10,
+          skills: ['critical-thinking'],
+          quest: { slug: 'critical-thinking-transfer' },
+        },
         {
           title: 'Логическая экспедиция',
           difficulty: 'beginner',
@@ -88,16 +108,18 @@ function createReviewQueueService() {
     service: new SkillService(prisma),
     transactionOptions,
     groupByCalls,
+    rawQueryCalls,
   };
 }
 
 test('builds a delayed-review queue from successful evidence in one repeatable-read snapshot', async () => {
-  const { service, transactionOptions, groupByCalls } = createReviewQueueService();
+  const { service, transactionOptions, groupByCalls, rawQueryCalls } = createReviewQueueService();
 
   const result = await service.getReviewQueue(profileId, now);
 
   assert.deepEqual(transactionOptions, [{ isolationLevel: 'RepeatableRead' }]);
-  assert.equal(groupByCalls.length, 2);
+  assert.equal(groupByCalls.length, 1);
+  assert.equal(rawQueryCalls.length, 1);
   assert.deepEqual(result.summary, { dueCount: 1, upcomingCount: 1, totalCount: 2 });
 
   assert.deepEqual(result.items.map((item) => ({
@@ -119,7 +141,7 @@ test('builds a delayed-review queue from successful evidence in one repeatable-r
       state: 'upcoming',
       intervalDays: 3,
       daysOverdue: 0,
-      recommendedSlugs: ['critical-thinking-expedition'],
+      recommendedSlugs: ['critical-thinking-expedition', 'critical-thinking-transfer'],
     },
   ]);
 });
