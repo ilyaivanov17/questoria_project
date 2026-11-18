@@ -8,13 +8,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { QuestService } from './quest.service.js';
 import { StartRunDto } from './dto/start-run.dto.js';
 import { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
-import { Throttle } from '@nestjs/throttler';
 
 @Controller('v1/runs')
 @UseGuards(AuthGuard)
@@ -29,13 +29,19 @@ export class RunController {
   }
 
   @Get(':runId')
-  getRun(@Req() request: Request, @Param('runId', new ParseUUIDPipe()) runId: string): Promise<object> {
+  getRun(
+    @Req() request: Request,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.quests.getRun(user.profileId, runId);
   }
 
   @Get(':runId/result')
-  getResult(@Req() request: Request, @Param('runId') runId: string): Promise<object> {
+  getResult(
+    @Req() request: Request,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.quests.getRun(user.profileId, runId);
   }
@@ -44,7 +50,7 @@ export class RunController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   submitAttempt(
     @Req() request: Request,
-    @Param('runId') runId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
     @Param('puzzleId', new ParseUUIDPipe()) puzzleId: string,
     @Body() dto: SubmitAttemptDto,
   ): Promise<object> {
