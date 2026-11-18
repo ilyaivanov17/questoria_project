@@ -78,6 +78,20 @@ test('publication readiness requires every selected skill to be explicitly repre
   assert.ok(result.errors.some((error) => error.includes('Learning objective must explicitly cover skill')));
 });
 
+test('publication readiness does not accept a skill name embedded inside a different word', async () => {
+  const check = makeReadiness();
+  const result = await check(
+    readinessVersion({
+      objectives: ['Развить антикритическое мышление', 'Научиться проверять аргументы'],
+    }),
+    {
+      skill: { findMany: async () => [skill] },
+      skillPrerequisite: { findMany: async () => [] },
+    },
+  );
+  assert.ok(result.errors.some((error) => error.includes('Learning objective must explicitly cover skill')));
+});
+
 test('publication readiness requires three puzzles and two task types for each skill', async () => {
   const check = makeReadiness();
   const result = await check(
