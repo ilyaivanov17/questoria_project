@@ -52,7 +52,7 @@ function readinessVersion(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeReadiness(edges: Array<{ skillId: string; prerequisiteId: string }> = []) {
+function makeReadiness() {
   const prisma = {
     skill: { findMany: async () => [skill] },
     skillPrerequisite: { findMany: async () => edges },
@@ -108,7 +108,7 @@ test('publication readiness detects cycles in the transitive prerequisite chain'
     { skillId: skill.id, prerequisiteId: secondSkill.id },
     { skillId: secondSkill.id, prerequisiteId: skill.id },
   ];
-  const check = makeReadiness(edges);
+  const check = makeReadiness();
   const result = await check(readinessVersion(), {
     skill: { findMany: async () => [skill, secondSkill] },
     skillPrerequisite: { findMany: async () => edges },
