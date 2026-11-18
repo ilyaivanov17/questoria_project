@@ -118,26 +118,45 @@ jobs:
             exit 1
           fi
 
-      - name: Start production web and verify same-origin proxy
+      - name: Build and start production web
         run: |
-          set -euo pipefail
           production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
           "${production_compose[@]}" up -d --build web
 
+      - name: Verify production web and same-origin API proxy
+        run: |
+          set -euo pipefail
+          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
+          web_id="$("${production_compose[@]}" ps -q web)"
+          if [[ -z "$web_id" ]]; then
+            echo "Production web container was not created." >&2
+            "${production_compose[@]}" logs --no-color --tail=150 api web
+            exit 1
+          fi
+
           web_ready=0
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health/ready >/dev/null; then
+          web_status=unknown
+          for attempt in $(seq 1 45); do
+            container_state="$(docker inspect --format '{{.State.Status}}' "$web_id" 2>/dev/null || echo missing)"
+            health_state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$web_id" 2>/dev/null || echo missing)"
+            web_status="$container_state/$health_state"
+            if [[ "$container_state" != "running" || "$health_state" == "unhealthy" ]]; then
+              break
+            fi
+            if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3000/api/health/ready >/dev/null; then
               web_ready=1
               break
             fi
             sleep 1
           done
           if [[ "$web_ready" -ne 1 ]]; then
+            echo "Production web/proxy did not become ready (container state: $web_status)." >&2
+            docker inspect --format '{{json .State}}' "$web_id" || true
             "${production_compose[@]}" logs --no-color --tail=150 api web
             exit 1
           fi
 
-          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/ >/dev/null
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/ >/dev/null
           curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health >/dev/null
           "${production_compose[@]}" ps
 
