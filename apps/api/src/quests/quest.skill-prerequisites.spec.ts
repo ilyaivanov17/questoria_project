@@ -24,19 +24,15 @@ function createService(options: {
   const events: string[] = [];
   let createCount = 0;
   const tx = {
+    $queryRaw: async () => {
+      events.push('catalog-shared-lock');
+      return [];
+    },
     skill: {
       findMany: async () => {
         events.push('load-skill-graph');
         return options.skills ?? [];
       },
-    },
-  };
-  const prisma = {
-    questVersion: {
-      findFirst: async () => ({
-        id: questVersionId,
-        skills: options.tags ?? [],
-      }),
     },
     questRun: {
       findFirst: async () => {
@@ -49,11 +45,16 @@ function createService(options: {
         return { id: createdRunId };
       },
     },
-    $transaction: async (
-      callback: (client: typeof tx) => Promise<unknown>,
-      transactionOptions: { isolationLevel?: string },
-    ) => {
-      events.push(`skill-snapshot:${transactionOptions.isolationLevel}`);
+  };
+  const prisma = {
+    questVersion: {
+      findFirst: async () => ({
+        id: questVersionId,
+        skills: options.tags ?? [],
+      }),
+    },
+    $transaction: async (callback: (client: typeof tx) => Promise<unknown>) => {
+      events.push('start-run-transaction');
       return callback(tx);
     },
   } as unknown as PrismaService;
@@ -90,7 +91,7 @@ test('startRun creates a quest with no skill tags without reading the skill cata
 
   const result = await service.startRun(profileId, { slug: 'published-quest' });
 
-  assert.deepEqual(events, ['find-active-run', 'create-run', 'load-run']);
+  assert.deepEqual(events, ['start-run-transaction', 'find-active-run', 'create-run', 'load-run']);
   assert.equal(getCreateCount(), 1);
   assert.deepEqual(result, { profileId, runId: createdRunId });
 });
@@ -104,8 +105,9 @@ test('startRun allows a quest when all direct prerequisites are mastered', async
   await service.startRun(profileId, { slug: 'published-quest' });
 
   assert.deepEqual(events, [
+    'start-run-transaction',
     'find-active-run',
-    'skill-snapshot:RepeatableRead',
+    'catalog-shared-lock',
     'load-skill-graph',
     'create-run',
     'load-run',
@@ -195,7 +197,7 @@ test('startRun keeps an existing active run resumable after prerequisites change
 
   const result = await service.startRun(profileId, { slug: 'published-quest' });
 
-  assert.deepEqual(events, ['find-active-run', 'load-run']);
+  assert.deepEqual(events, ['start-run-transaction', 'find-active-run', 'load-run']);
   assert.equal(getCreateCount(), 0);
   assert.deepEqual(result, { profileId, runId: activeRun.id });
 });
