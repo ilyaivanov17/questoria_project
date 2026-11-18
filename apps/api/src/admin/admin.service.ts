@@ -343,7 +343,7 @@ export class AdminService {
   async getTaskLearningAnalytics(): Promise<object> {
     const [groups, puzzleRows, skillRows] = await Promise.all([
       this.prisma.learningEvidence.groupBy({
-        by: ['puzzleId', 'skillId', 'profileId', 'taskType', 'isCorrect'],
+        by: ['puzzleId', 'skillId', 'profileId', 'taskType', 'evidenceType', 'isCorrect'],
         _count: { _all: true },
       }),
       this.prisma.puzzle.findMany({
@@ -389,7 +389,7 @@ export class AdminService {
       attempts: number;
       successful: number;
       learners: Set<string>;
-      taskTypes: Set<string>;
+      evidenceTypes: Set<string>;
       mastered: { attempts: number; successful: number; learners: Set<string> };
       notMastered: { attempts: number; successful: number; learners: Set<string> };
     };
@@ -400,7 +400,7 @@ export class AdminService {
         attempts: 0,
         successful: 0,
         learners: new Set<string>(),
-        taskTypes: new Set<string>(),
+        evidenceTypes: new Set<string>(),
         mastered: { attempts: 0, successful: 0, learners: new Set<string>() },
         notMastered: { attempts: 0, successful: 0, learners: new Set<string>() },
       };
@@ -409,7 +409,7 @@ export class AdminService {
       metric.attempts += count;
       if (group.isCorrect) metric.successful += count;
       metric.learners.add(group.profileId);
-      metric.taskTypes.add(group.taskType);
+      metric.evidenceTypes.add(group.evidenceType);
       const cohort = mastered ? metric.mastered : metric.notMastered;
       cohort.attempts += count;
       if (group.isCorrect) cohort.successful += count;
@@ -435,6 +435,7 @@ export class AdminService {
         : null;
       const qualitySignals: string[] = [];
       if (metric.attempts > 0 && metric.attempts < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (metric.attempts >= 10 && metric.evidenceTypes.size === 1) qualitySignals.push('LOW_EVIDENCE_DIVERSITY');
       if (metric.attempts >= 10 && successRate !== null && successRate < 40) {
         qualitySignals.push('LOW_SUCCESS_RATE');
       }
@@ -463,7 +464,7 @@ export class AdminService {
         successful: metric.successful,
         successRate,
         learners: metric.learners.size,
-        taskTypeCount: metric.taskTypes.size,
+        evidenceTypeCount: metric.evidenceTypes.size,
         masteryDiscrimination: {
           mastered: {
             attempts: metric.mastered.attempts,
