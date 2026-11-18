@@ -48,6 +48,7 @@ export interface PlayerSkillProgress {
   distinctPuzzles: number;
   distinctQuestVersions: number;
   distinctQuests: number;
+  distinctRuns: number;
   distinctTaskTypes: number;
   firstPracticedAt: string | null;
   lastPracticedAt: string | null;
