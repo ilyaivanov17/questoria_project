@@ -6,7 +6,6 @@ import {
 } from './cms-authorization.js';
 
 const author = { userId: 'author-1', roleKeys: ['AUTHOR'] };
-const anotherAuthor = { userId: 'author-2', roleKeys: ['AUTHOR'] };
 const reviewer = { userId: 'reviewer-1', roleKeys: ['REVIEWER'] };
 const admin = { userId: 'admin-1', roleKeys: ['ADMIN'] };
 const superAdmin = { userId: 'super-1', roleKeys: ['SUPER_ADMIN'] };
