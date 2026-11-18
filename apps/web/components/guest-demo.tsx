@@ -62,11 +62,14 @@ export function GuestDemo({ slug }: { slug: string }) {
         return inputAnswer.trim() ? { value: inputAnswer } : null;
       case 'text_input':
         return inputAnswer.trim() ? { text: inputAnswer } : null;
-      case 'ordering':
-        return preview.puzzle.items.length > 1
-          && orderedIds.length === preview.puzzle.items.length
+      case 'ordering': {
+        const orderingPuzzle = preview?.puzzle;
+        if (!orderingPuzzle || orderingPuzzle.type !== 'ordering') return null;
+        return orderingPuzzle.items.length > 1
+          && orderedIds.length === orderingPuzzle.items.length
           ? { orderedIds }
           : null;
+      }
       default:
         return null;
     }
