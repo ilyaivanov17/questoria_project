@@ -36,7 +36,7 @@ nvm install
 nvm use
 corepack enable
 pnpm install --frozen-lockfile
-cp .env.example .env
+if [ ! -f .env ]; then cp .env.example .env; fi
 docker compose -f infra/docker/docker-compose.yml up -d postgres
 pnpm db:generate
 pnpm db:deploy
@@ -53,7 +53,7 @@ pnpm dev
 
 ## GitHub Codespaces
 
-1. Откройте репозиторий, выберите **Code → Codespaces → Create codespace** на ветке с принятыми инфраструктурными изменениями.
+1. Откройте репозиторий на `main` после принятия PR #20 (до merge можно выбрать ветку `qa/codespaces-release-readiness`), затем выберите **Code → Codespaces → Create codespace**.
 2. Devcontainer автоматически создаст `.env` из `.env.example` (только если `.env` ещё нет), установит зависимости по `pnpm-lock.yaml`, поднимет PostgreSQL, применит миграции и загрузит seed-квест.
 3. После завершения инициализации запустите приложения:
 
