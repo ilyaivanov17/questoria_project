@@ -1122,7 +1122,10 @@ export class AdminService {
     return version;
   }
 
-  private async checkPublishReadiness(version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>) {
+  private async checkPublishReadiness(
+    version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>,
+    client: Pick<Transaction, 'skill'> = this.prisma,
+  ) {
     const errors: string[] = [];
     if (!version.title.trim()) errors.push('Title is required.');
     if (version.summary.trim().length < 20) errors.push('Summary must contain at least 20 characters.');
@@ -1130,7 +1133,18 @@ export class AdminService {
     if (!Array.isArray(version.objectives) || version.objectives.length < 2 || version.objectives.length > 4) {
       errors.push('Provide 2–4 learning objectives.');
     }
-    if (version.skills.length < 1) errors.push('Select at least one skill.');
+    if (version.skills.length < 1) {
+      errors.push('Select at least one skill.');
+    } else {
+      const skillKeys = version.skills.map(normalizeSkillKey);
+      const catalog = await client.skill.findMany({
+        where: { key: { in: skillKeys } },
+        select: { key: true },
+      });
+      const knownKeys = new Set(catalog.map((skill) => skill.key));
+      const unknown = [...new Set(skillKeys.filter((key) => !knownKeys.has(key)))];
+      if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
+    }
     if (version.ageMin < 14 || version.ageMin > version.ageMax) errors.push('Age range is invalid.');
     if (!version.locale || !version.difficulty || version.durationMin < 1) errors.push('Locale, difficulty and duration are required.');
     const seo = version.seo && typeof version.seo === 'object' && !Array.isArray(version.seo)
@@ -1173,6 +1187,98 @@ export class AdminService {
     }
     if (puzzleCount < 1) errors.push('At least one puzzle is required.');
     return { errors };
+  }
+
+  private async resolveSkillNames(tx: Transaction, values: string[]): Promise<string[]> {
+    const normalized = values.map(normalizeSkillKey);
+    if (new Set(normalized).size !== normalized.length) {
+      throw new BadRequestException('Select each skill only once.');
+    }
+    const skills = await tx.skill.findMany({
+      where: {
+        OR: [
+          { key: { in: normalized } },
+          { name: { in: values.map((value) => value.trim()) } },
+        ],
+      },
+      select: { id: true, key: true, name: true },
+    });
+    const resolved = normalized.map((key) => (
+      skills.find((skill) => skill.key === key || normalizeSkillKey(skill.name) === key)
+    ));
+    const missing = values.filter((_, index) => !resolved[index]);
+    if (missing.length) {
+      throw new BadRequestException({
+        message: 'Every selected quest skill must exist in the skill catalog.',
+        unknownSkills: missing,
+      });
+    }
+    const distinctIds = new Set(resolved.map((skill) => skill!.id));
+    if (distinctIds.size !== resolved.length) {
+      throw new BadRequestException('Select each skill only once.');
+    }
+    // Preserve the legacy QuestVersion.skills display-label contract. Skill
+    // keys remain stable catalog identifiers and are resolved on the backend.
+    return resolved.map((skill) => skill!.name);
+  }
+
+  private async lockSkillGraph(tx: Transaction): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "skills" ORDER BY "id" FOR UPDATE
+    `;
+  }
+
+  private async assertSkillPrerequisites(
+    tx: Transaction,
+    skillId: string,
+    prerequisiteIds: string[],
+  ): Promise<void> {
+    if (new Set(prerequisiteIds).size !== prerequisiteIds.length) {
+      throw new BadRequestException('A prerequisite may be selected only once.');
+    }
+    if (prerequisiteIds.includes(skillId)) {
+      throw new BadRequestException('A skill cannot depend on itself.');
+    }
+    if (prerequisiteIds.length === 0) return;
+
+    const existing = await tx.skill.findMany({
+      where: { id: { in: prerequisiteIds } },
+      select: { id: true },
+    });
+    if (existing.length !== prerequisiteIds.length) {
+      throw new BadRequestException('Every prerequisite must reference an existing skill.');
+    }
+
+    const edges = await tx.skillPrerequisite.findMany({
+      select: { skillId: true, prerequisiteId: true },
+    });
+    const prerequisitesBySkill = new Map<string, string[]>();
+    for (const edge of edges) {
+      const list = prerequisitesBySkill.get(edge.skillId) ?? [];
+      list.push(edge.prerequisiteId);
+      prerequisitesBySkill.set(edge.skillId, list);
+    }
+
+    for (const prerequisiteId of prerequisiteIds) {
+      const pending = [prerequisiteId];
+      const visited = new Set<string>();
+      while (pending.length) {
+        const current = pending.pop()!;
+        if (current === skillId) {
+          throw new BadRequestException('Skill prerequisites cannot contain a cycle.');
+        }
+        if (visited.has(current)) continue;
+        visited.add(current);
+        pending.push(...(prerequisitesBySkill.get(current) ?? []));
+      }
+    }
+  }
+
+  private isPrismaCode(error: unknown, code: string): boolean {
+    return typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && (error as { code?: unknown }).code === code;
   }
 
   private async audit(
