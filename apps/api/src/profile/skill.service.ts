@@ -130,6 +130,12 @@ export class SkillService {
       events.push({ isCorrect: evidence.isCorrect });
       trendEvidenceBySkill.set(evidence.skillId, events);
     }
+    const learningTrendBySkill = new Map(
+      snapshot.definitions.map((definition) => [
+        definition.id,
+        calculateSkillLearningTrend(trendEvidenceBySkill.get(definition.id) ?? []),
+      ]),
+    );
     const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
     const difficultyRank = (value: string | null): number | null => {
       switch (value?.trim().toLowerCase()) {
@@ -184,6 +190,8 @@ export class SkillService {
 
     for (const definition of snapshot.definitions) {
       const isMastered = definition.progress[0]?.status === 'MASTERED';
+      const learningTrend = learningTrendBySkill.get(definition.id)!;
+      const shouldAdvance = isMastered && learningTrend.direction !== 'declining';
       const currentDifficulty = difficultyRank(definition.difficulty);
       const recommendations = !prerequisitesAreMastered(definition.id)
         ? []
@@ -197,17 +205,17 @@ export class SkillService {
             ) return false;
 
             const questDifficulty = difficultyRank(version.difficulty);
-            if (currentDifficulty === null || questDifficulty === null) return !isMastered;
-            // A mastered skill unlocks the next difficulty tier; an unmastered
-            // skill stays at its current tier or an easier one.
-            return isMastered
+            if (currentDifficulty === null || questDifficulty === null) return !shouldAdvance;
+            // Only a mastered skill with a stable or improving recent trend
+            // unlocks the next tier. A declining trend stays on the current tier.
+            return shouldAdvance
               ? questDifficulty === currentDifficulty + 1
               : questDifficulty <= currentDifficulty;
           })
           .sort((left, right) => {
             const leftRank = difficultyRank(left.difficulty) ?? -1;
             const rightRank = difficultyRank(right.difficulty) ?? -1;
-            const rankOrder = isMastered
+            const rankOrder = shouldAdvance
               ? leftRank - rightRank
               : rightRank - leftRank;
             return rankOrder || left.title.localeCompare(right.title, 'ru');
@@ -258,7 +266,7 @@ export class SkillService {
         firstPracticedAt: progress?.firstPracticedAt?.toISOString() ?? null,
         lastPracticedAt: progress?.lastPracticedAt?.toISOString() ?? null,
         masteredAt: progress?.masteredAt?.toISOString() ?? null,
-        trend: calculateSkillLearningTrend(trendEvidenceBySkill.get(definition.id) ?? []),
+        trend: learningTrendBySkill.get(definition.id)!,
         recommendedQuests: recommendedQuestsBySkill.get(definition.id) ?? [],
       };
     });

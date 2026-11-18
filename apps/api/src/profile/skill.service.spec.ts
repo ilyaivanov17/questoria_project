@@ -6,7 +6,20 @@ import { SkillService } from './skill.service.js';
 const profileId = '11111111-1111-4111-8111-111111111111';
 const now = new Date('2026-11-18T10:00:00.000Z');
 
-function createService() {
+function createService(
+  trendEvidence: Array<{ skillId: string; isCorrect: boolean }> = [
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: false },
+  ],
+) {
   const transactionOptions: Array<{ isolationLevel?: string }> = [];
   const tx = {
     skill: {
@@ -76,6 +89,13 @@ function createService() {
           quest: { slug: 'critical-thinking-advanced' },
         },
         {
+          title: 'Практика критического мышления',
+          difficulty: 'intermediate',
+          durationMin: 11,
+          skills: ['critical-thinking'],
+          quest: { slug: 'critical-thinking-practice' },
+        },
+        {
           title: 'Продвинутые числовые закономерности',
           difficulty: 'advanced',
           durationMin: 12,
@@ -98,18 +118,7 @@ function createService() {
         },
       ],
     },
-    $queryRaw: async () => [
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: false },
-      { skillId: 'skill-1', isCorrect: false },
-      { skillId: 'skill-1', isCorrect: false },
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: true },
-      { skillId: 'skill-1', isCorrect: false },
-    ],
+    $queryRaw: async () => trendEvidence,
     learningEvidence: {
       findMany: async () => [{
         id: 'evidence-1',
@@ -186,10 +195,10 @@ test('returns mastery, evidence counts and a separate not-started state from one
       previousSuccessRate: 80,
     },
     recommendedQuests: [{
-      slug: 'critical-thinking-advanced',
-      title: 'Продвинутые логические задачи',
-      difficulty: 'advanced',
-      durationMin: 16,
+      slug: 'critical-thinking-practice',
+      title: 'Практика критического мышления',
+      difficulty: 'intermediate',
+      durationMin: 11,
     }],
   });
   assert.deepEqual(result.skills[1], {
@@ -282,5 +291,24 @@ test('returns mastery, evidence counts and a separate not-started state from one
     questSlug: 'logic-mission',
     levelTitle: 'Найди закономерность',
     puzzleOrder: 2,
+  }]);
+});
+
+test('recommends the next difficulty tier after mastery when the trend is not declining', async () => {
+  const improvingEvidence = [
+    true, true, true, true, false,
+    true, false, false, false, false,
+  ].map((isCorrect) => ({ skillId: 'skill-1', isCorrect }));
+  const { service } = createService(improvingEvidence);
+
+  const result = await service.getSkills(profileId);
+
+  assert.equal(result.skills[0]?.status, 'mastered');
+  assert.equal(result.skills[0]?.trend.direction, 'improving');
+  assert.deepEqual(result.skills[0]?.recommendedQuests, [{
+    slug: 'critical-thinking-advanced',
+    title: 'Продвинутые логические задачи',
+    difficulty: 'advanced',
+    durationMin: 16,
   }]);
 });

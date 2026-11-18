@@ -137,7 +137,7 @@ export function SkillProgressSection({
             const dueReview = reviewItems.find((item) => (
               item.skillId === skill.id && item.state === 'due'
             ));
-            const isDeclining = skill.trend.direction === 'declining' && skill.status !== 'mastered';
+            const isDeclining = skill.trend.direction === 'declining';
             const nextStepTitle = dueReview
               ? 'Пора повторить'
               : isDeclining
