@@ -13,11 +13,26 @@ test('initial learning library has a complete, publishable catalog', () => {
   assert.deepEqual(validateSeedLibrary(), []);
   assert.equal(categorySeeds.length, 8);
   assert.equal(skillSeeds.length, 20);
-  assert.equal(questSeeds.length, 21);
+  assert.equal(questSeeds.length, 25);
   assert.equal(
     questSeeds.reduce((total, quest) => total + buildQuestPuzzles(quest).length, 0),
-    189,
+    225,
   );
+});
+
+
+test('every public category has at least three fully seeded missions', () => {
+  const questsPerCategory = new Map(categorySeeds.map((category) => [category.slug, 0]));
+  for (const quest of questSeeds) {
+    questsPerCategory.set(quest.category, (questsPerCategory.get(quest.category) ?? 0) + 1);
+  }
+
+  for (const category of categorySeeds) {
+    assert.ok(
+      (questsPerCategory.get(category.slug) ?? 0) >= 3,
+      category.slug + ' must have at least three missions before public indexing',
+    );
+  }
 });
 
 test('each seeded quest has three levels, varied tasks and explicit skill objectives', () => {

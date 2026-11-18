@@ -168,6 +168,27 @@ assert.ok(categories.body.some((category) =>
   category.quests.some((quest) => quest.slug === demoQuestSlug),
 ));
 
+const requiredThemeSlugs = [
+  'logic', 'math', 'language', 'science',
+  'digital', 'society', 'space', 'nature',
+];
+for (const themeSlug of requiredThemeSlugs) {
+  const category = categories.body.find((item) => item.slug === themeSlug);
+  assert.ok(category, 'the learning library should expose the seeded theme ' + themeSlug);
+  assert.ok(category.quests.length >= 3, themeSlug + ' should have at least three published missions');
+}
+for (const category of categories.body) {
+  for (const quest of category.quests) {
+    const preview = await request('/api/v1/public/quests/' + encodeURIComponent(quest.slug) + '/preview');
+    assert.equal(preview.response.status, 200, 'guest preview should exist for ' + quest.slug);
+    assert.equal(typeof preview.body?.puzzle?.prompt, 'string');
+    assert.ok(preview.body.puzzle.prompt.length > 0);
+    const previewJson = JSON.stringify(preview.body);
+    assert.equal(previewJson.includes('correctOptionId'), false, quest.slug + ' preview leaked the private solution');
+    assert.equal(previewJson.includes('solutionPrivate'), false, quest.slug + ' preview leaked the private solution');
+  }
+}
+
 const guestPreview = await request('/api/v1/public/quests/' + demoQuestSlug + '/preview');
 assert.equal(guestPreview.response.status, 200);
 assert.equal(guestPreview.body?.puzzle?.type, expectedAnswers[0].type);
