@@ -96,9 +96,9 @@ test('task learning analytics aggregates per puzzle and skill and compares curre
   const service = makeService({
     learningEvidence: {
       groupBy: async () => [
-        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-mastered', taskType: 'numeric_input', isCorrect: true, _count: { _all: 6 } },
-        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-not-mastered', taskType: 'numeric_input', isCorrect: true, _count: { _all: 1 } },
-        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-not-mastered', taskType: 'numeric_input', isCorrect: false, _count: { _all: 5 } },
+        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-mastered', taskType: 'numeric_input', evidenceType: 'INITIAL', isCorrect: true, _count: { _all: 6 } },
+        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-not-mastered', taskType: 'numeric_input', evidenceType: 'PRACTICE', isCorrect: true, _count: { _all: 1 } },
+        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'learner-not-mastered', taskType: 'numeric_input', evidenceType: 'DELAYED_CHECK', isCorrect: false, _count: { _all: 5 } },
       ],
     },
     puzzle: {
@@ -144,8 +144,8 @@ test('task learning analytics flags small samples and low mastery separation wit
   const service = makeService({
     learningEvidence: {
       groupBy: async () => [
-        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'a', taskType: 'single_choice', isCorrect: true, _count: { _all: 5 } },
-        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'b', taskType: 'single_choice', isCorrect: true, _count: { _all: 5 } },
+        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'a', taskType: 'single_choice', evidenceType: 'INITIAL', isCorrect: true, _count: { _all: 5 } },
+        { puzzleId: 'puzzle-1', skillId: 'skill-1', profileId: 'b', taskType: 'single_choice', evidenceType: 'INITIAL', isCorrect: true, _count: { _all: 5 } },
       ],
     },
     puzzle: { findMany: async () => [{ id: 'puzzle-1', orderNo: 1, type: 'single_choice', level: { orderNo: 1, title: 'Уровень', questVersion: { id: 'v', versionNo: 1, title: 'Квест', quest: { slug: 'quest' } } } }] },
@@ -155,7 +155,7 @@ test('task learning analytics flags small samples and low mastery separation wit
   const result = await service.getTaskLearningAnalytics() as {
     tasks: Array<{ qualitySignals: string[]; masteryDiscrimination: { successRateGap: number | null } }>;
   };
-  assert.deepEqual(result.tasks[0].qualitySignals, ['LOW_MASTERY_SEPARATION']);
+  assert.deepEqual(result.tasks[0].qualitySignals, ['LOW_EVIDENCE_DIVERSITY', 'LOW_MASTERY_SEPARATION']);
   assert.equal(result.tasks[0].masteryDiscrimination.successRateGap, 0);
   assert.equal(JSON.stringify(result).includes('"profileId"'), false);
 });
