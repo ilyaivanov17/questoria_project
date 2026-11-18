@@ -13,6 +13,7 @@ import type { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js
 import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
 import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
+import { canManageQuestDraft } from './cms-authorization.js';
 import { AUDIT_LOG_EXPORT_LIMIT, buildAuditLogWhere, type AuditLogFilters } from './audit-log.query.js';
 
 const EDITABLE_STATUSES = ['DRAFT'] as const;
@@ -266,6 +267,11 @@ export class AdminService {
       if (currentDraft.id !== version.id) {
         throw new ConflictException('The current draft changed. Reload the quest and try again.');
       }
+      // Re-check ownership while the draft row is locked. A pre-transaction
+      // ownership check alone is vulnerable to an author reassignment race.
+      if (!canManageQuestDraft(user, currentDraft.authorId)) {
+        throw new ForbiddenException('You can only edit your own draft. Ask an administrator to reassign the draft.');
+      }
       if ((dto.ageMin ?? currentDraft.ageMin) > (dto.ageMax ?? currentDraft.ageMax)) {
         throw new BadRequestException('Minimum age cannot exceed maximum age.');
       }
@@ -410,6 +416,11 @@ export class AdminService {
       version = await this.getLatestDraftVersion(id, tx);
       if (version.id !== lockedVersion[0]!.id) {
         throw new ConflictException('The current draft changed. Reload the quest and try again.');
+      }
+      // Ownership must be validated against the locked, freshly read version
+      // rather than the earlier snapshot, to close the same reassignment race.
+      if (!canManageQuestDraft(user, version.authorId)) {
+        throw new ForbiddenException('Only the draft author or an administrator can submit this version for review.');
       }
       const readiness = await this.checkPublishReadiness(version);
       if (readiness.errors.length) {
