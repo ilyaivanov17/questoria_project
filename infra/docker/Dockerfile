@@ -74,9 +74,12 @@ COPY --from=build --chown=node:node /app/apps/web/.next ./apps/web/.next
 COPY --from=build --chown=node:node /app/apps/web/app ./apps/web/app
 COPY --from=build --chown=node:node /app/apps/web/components ./apps/web/components
 COPY --from=build --chown=node:node /app/apps/web/next.config.ts ./apps/web/next.config.ts
+RUN test -f apps/web/node_modules/next/dist/bin/next
 USER node
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@questoria/web", "start"]
+# pnpm is a build-time tool only. Run the installed Next.js CLI directly so
+# the runtime user does not need to mutate the root-owned Corepack cache.
+CMD ["node", "apps/web/node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "3000"]
 
 # Explicit one-shot migration image. Compose only runs this target on request.
 FROM dependencies AS migrate
