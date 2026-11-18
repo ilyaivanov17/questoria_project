@@ -201,7 +201,11 @@ export class AdminService {
           ...version,
           levels: version.levels.map((level) => ({
             ...level,
-            puzzles: level.puzzles.map(({ solutionPrivate: _solutionPrivate, ...puzzle }) => puzzle),
+            puzzles: level.puzzles.map((puzzle) => {
+              const safePuzzle = { ...puzzle };
+              Reflect.deleteProperty(safePuzzle, 'solutionPrivate');
+              return safePuzzle;
+            }),
           })),
         })),
       };
