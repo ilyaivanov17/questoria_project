@@ -25,7 +25,7 @@ function jsonInput(value: unknown): Prisma.InputJsonValue {
 }
 
 function normalizeSkillKey(value: string): string {
-  return value.normalize('NFKC').trim().toLowerCase().replace(/\\s+/g, '-');
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '-');
 }
 
 function puzzleAnswerForDefinition(type: string, solution: Record<string, unknown>): Record<string, unknown> {
