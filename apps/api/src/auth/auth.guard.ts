@@ -7,22 +7,7 @@ import {
 import { createHash } from 'node:crypto';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service.js';
-
-const COOKIE_NAME = 'questoria_session';
-
-function getCookie(request: Request, name: string): string | null {
-  const header = request.headers.cookie;
-  if (!header) return null;
-
-  for (const part of header.split(';')) {
-    const separator = part.indexOf('=');
-    if (separator < 0) continue;
-    const key = part.slice(0, separator).trim();
-    if (key === name) return decodeURIComponent(part.slice(separator + 1).trim());
-  }
-
-  return null;
-}
+import { parseSessionCookie } from './session-cookie.js';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -30,8 +15,8 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const rawToken = getCookie(request, COOKIE_NAME);
-    if (!rawToken || rawToken.length > 256) {
+    const rawToken = parseSessionCookie(request.headers.cookie);
+    if (!rawToken) {
       throw new UnauthorizedException('Please sign in to continue.');
     }
 

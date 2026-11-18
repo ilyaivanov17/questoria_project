@@ -21,12 +21,12 @@ import {
   ResetPasswordDto,
   VerifyEmailDto,
 } from './dto/account-actions.dto.js';
+import { SESSION_COOKIE_NAME } from './session-cookie.js';
 
-const COOKIE_NAME = 'questoria_session';
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function setSessionCookie(response: Response, token: string): void {
-  response.cookie(COOKIE_NAME, token, {
+  response.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -36,7 +36,7 @@ function setSessionCookie(response: Response, token: string): void {
 }
 
 function clearSessionCookie(response: Response): void {
-  response.clearCookie(COOKIE_NAME, {
+  response.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
