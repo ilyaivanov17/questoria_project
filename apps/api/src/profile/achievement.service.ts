@@ -16,6 +16,7 @@ export class AchievementService {
           where: { active: true },
           orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
           select: {
+            id: true,
             code: true,
             title: true,
             description: true,
@@ -43,32 +44,18 @@ export class AchievementService {
     );
 
     const achievements: PlayerAchievement[] = snapshot.definitions.map((definition) => {
-      const award = snapshot.awards.find(
-        (candidate) => candidate.achievementId === this.getAchievementId(
-          candidate.achievementId,
-          snapshot.definitions,
-          definition.code,
-        ),
-      );
-      const persistedAward = award ?? snapshot.awards.find((candidate) => {
-        // The response catalog is keyed by stable code, while awards reference
-        // the definition UUID. Resolve it below using the catalog lookup.
-        return candidate.achievementId === awardsById.get(candidate.achievementId)?.achievementId
-          && false;
-      });
-      const matchingAward = persistedAward ?? null;
-
+      const award = awardsById.get(definition.id) ?? null;
       return {
         id: definition.code,
         title: definition.title,
         description: definition.description,
         icon: definition.icon,
-        unlocked: matchingAward !== null,
-        awardedAt: matchingAward?.awardedAt.toISOString() ?? null,
+        unlocked: award !== null,
+        awardedAt: award?.awardedAt.toISOString() ?? null,
         xpReward: definition.xpReward,
         coinsReward: definition.coinsReward,
-        xpAwarded: matchingAward?.xpAwarded ?? 0,
-        coinsAwarded: matchingAward?.coinsAwarded ?? 0,
+        xpAwarded: award?.xpAwarded ?? 0,
+        coinsAwarded: award?.coinsAwarded ?? 0,
       };
     });
 
@@ -84,17 +71,5 @@ export class AchievementService {
       unlockedCount: history.length,
       totalCount: achievements.length,
     };
-  }
-
-  private getAchievementId(
-    awardId: string,
-    definitions: Array<{ code: string }>,
-    currentCode: string,
-  ): string {
-    // This method is intentionally not used to infer a UUID from a code.
-    // It exists only to keep the lookup path explicit at the call site.
-    return definitions.some((definition) => definition.code === currentCode)
-      ? awardId
-      : '';
   }
 }
