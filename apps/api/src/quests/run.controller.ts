@@ -3,10 +3,12 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -20,28 +22,36 @@ export class RunController {
   constructor(private readonly quests: QuestService) {}
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   start(@Req() request: Request, @Body() dto: StartRunDto): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.quests.startRun(user.profileId, dto);
   }
 
   @Get(':runId')
-  getRun(@Req() request: Request, @Param('runId') runId: string): Promise<object> {
+  getRun(
+    @Req() request: Request,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.quests.getRun(user.profileId, runId);
   }
 
   @Get(':runId/result')
-  getResult(@Req() request: Request, @Param('runId') runId: string): Promise<object> {
+  getResult(
+    @Req() request: Request,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.quests.getRun(user.profileId, runId);
   }
 
   @Post(':runId/puzzles/:puzzleId/attempts')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   submitAttempt(
     @Req() request: Request,
-    @Param('runId') runId: string,
-    @Param('puzzleId') puzzleId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+    @Param('puzzleId', new ParseUUIDPipe()) puzzleId: string,
     @Body() dto: SubmitAttemptDto,
   ): Promise<object> {
     const user = request.authUser as AuthenticatedUser;

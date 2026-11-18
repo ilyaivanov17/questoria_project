@@ -10,10 +10,12 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import type { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
+import type { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
 import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
 import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
 import { AUDIT_LOG_EXPORT_LIMIT, buildAuditLogWhere, type AuditLogFilters } from './audit-log.query.js';
+import { canManageQuestDraft, canViewAllQuestVersions } from './cms-authorization.js';
 
 const EDITABLE_STATUSES = ['DRAFT'] as const;
 
@@ -21,6 +23,16 @@ type Transaction = Prisma.TransactionClient;
 
 function jsonInput(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function normalizeSkillKey(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+function normalizeSkillText(value: string): string {
+  return value.normalize('NFKC').toLowerCase().trim()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function puzzleAnswerForDefinition(type: string, solution: Record<string, unknown>): Record<string, unknown> {
@@ -122,12 +134,24 @@ export class AdminService {
     });
   }
 
-  async listQuests(): Promise<object[]> {
+  async listQuests(user: AuthenticatedUser): Promise<object[]> {
+    const authorOnly = !canViewAllQuestVersions(user);
     const quests = await this.prisma.quest.findMany({
+      where: authorOnly
+        ? {
+          OR: [
+            { status: 'PUBLISHED' },
+            { versions: { some: { authorId: user.userId } } },
+          ],
+        }
+        : {},
       orderBy: { updatedAt: 'desc' },
       include: {
         category: { select: { title: true, slug: true } },
         versions: {
+          where: authorOnly
+            ? { OR: [{ authorId: user.userId }, { status: 'PUBLISHED' }] }
+            : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           select: { id: true, versionNo: true, title: true, status: true, updatedAt: true },
@@ -143,12 +167,26 @@ export class AdminService {
     }));
   }
 
-  async getQuest(id: string): Promise<object> {
-    const quest = await this.prisma.quest.findUnique({
-      where: { id },
+  async getQuest(user: AuthenticatedUser, id: string): Promise<object> {
+    const authorOnly = !canViewAllQuestVersions(user);
+    const quest = await this.prisma.quest.findFirst({
+      where: {
+        id,
+        ...(authorOnly
+          ? {
+            OR: [
+              { status: 'PUBLISHED' },
+              { versions: { some: { authorId: user.userId } } },
+            ],
+          }
+          : {}),
+      },
       include: {
         category: true,
         versions: {
+          where: authorOnly
+            ? { OR: [{ authorId: user.userId }, { status: 'PUBLISHED' }] }
+            : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           include: {
@@ -166,7 +204,493 @@ export class AdminService {
       },
     });
     if (!quest) throw new NotFoundException('Quest not found.');
+    const latestVersion = quest.versions[0];
+    if (authorOnly && latestVersion && latestVersion.authorId !== user.userId) {
+      return {
+        ...quest,
+        versions: quest.versions.map((version) => ({
+          ...version,
+          levels: version.levels.map((level) => ({
+            ...level,
+            puzzles: level.puzzles.map((puzzle) => {
+              const safePuzzle = { ...puzzle };
+              Reflect.deleteProperty(safePuzzle, 'solutionPrivate');
+              return safePuzzle;
+            }),
+          })),
+        })),
+      };
+    }
     return quest;
+  }
+
+  async listSkills(): Promise<object[]> {
+    const skills = await this.prisma.skill.findMany({
+      orderBy: [{ name: 'asc' }, { key: 'asc' }],
+      include: {
+        prerequisites: {
+          include: {
+            prerequisite: {
+              select: { id: true, key: true, name: true, description: true, difficulty: true },
+            },
+          },
+        },
+        unlocks: {
+          include: {
+            skill: { select: { id: true, key: true, name: true } },
+          },
+        },
+        _count: { select: { evidence: true, progress: true } },
+      },
+    });
+
+    return skills.map((skill) => ({
+      id: skill.id,
+      key: skill.key,
+      name: skill.name,
+      description: skill.description,
+      difficulty: skill.difficulty,
+      prerequisites: skill.prerequisites.map((edge) => edge.prerequisite),
+      unlocks: skill.unlocks.map((edge) => edge.skill),
+      evidenceCount: skill._count.evidence,
+      learnerCount: skill._count.progress,
+      createdAt: skill.createdAt,
+    }));
+  }
+
+  async getLearningAnalytics(): Promise<object> {
+    const [skills, evidenceGroups, progressGroups] = await Promise.all([
+      this.prisma.skill.findMany({
+        orderBy: [{ name: 'asc' }, { key: 'asc' }],
+        select: { id: true, key: true, name: true },
+      }),
+      this.prisma.learningEvidence.groupBy({
+        by: ['skillId', 'taskType', 'isCorrect'],
+        _count: { _all: true },
+      }),
+      this.prisma.profileSkillProgress.groupBy({
+        by: ['skillId', 'status'],
+        _count: { _all: true },
+      }),
+    ]);
+
+    const evidenceBySkill = new Map<string, {
+      total: number;
+      successful: number;
+      tasks: Map<string, { total: number; successful: number }>;
+    }>();
+    for (const group of evidenceGroups) {
+      const current = evidenceBySkill.get(group.skillId) ?? {
+        total: 0, successful: 0, tasks: new Map(),
+      };
+      const count = group._count._all;
+      current.total += count;
+      if (group.isCorrect) current.successful += count;
+      const task = current.tasks.get(group.taskType) ?? { total: 0, successful: 0 };
+      task.total += count;
+      if (group.isCorrect) task.successful += count;
+      current.tasks.set(group.taskType, task);
+      evidenceBySkill.set(group.skillId, current);
+    }
+
+    const progressBySkill = new Map<string, {
+      learners: number;
+      mastered: number;
+      practicing: number;
+      developing: number;
+      proficient: number;
+    }>();
+    for (const group of progressGroups) {
+      const current = progressBySkill.get(group.skillId) ?? {
+        learners: 0, mastered: 0, practicing: 0, developing: 0, proficient: 0,
+      };
+      current.learners += group._count._all;
+      switch (group.status) {
+        case 'MASTERED': current.mastered += group._count._all; break;
+        case 'PRACTICING': current.practicing += group._count._all; break;
+        case 'DEVELOPING': current.developing += group._count._all; break;
+        case 'PROFICIENT': current.proficient += group._count._all; break;
+      }
+      progressBySkill.set(group.skillId, current);
+    }
+
+    const skillMetrics = skills.map((skill) => {
+      const evidence = evidenceBySkill.get(skill.id) ?? { total: 0, successful: 0, tasks: new Map() };
+      const progress = progressBySkill.get(skill.id) ?? {
+        learners: 0, mastered: 0, practicing: 0, developing: 0, proficient: 0,
+      };
+      const successRate = evidence.total ? Math.round((evidence.successful / evidence.total) * 100) : null;
+      const taskTypes = [...evidence.tasks.entries()]
+        .map(([taskType, counts]) => ({
+          taskType,
+          attempts: counts.total,
+          successful: counts.successful,
+          successRate: Math.round((counts.successful / counts.total) * 100),
+        }))
+        .sort((left, right) => left.taskType.localeCompare(right.taskType));
+      const masteryRate = progress.learners
+        ? Math.round((progress.mastered / progress.learners) * 100)
+        : null;
+      const qualitySignals: string[] = [];
+      if (evidence.total > 0 && evidence.total < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (evidence.total >= 10 && successRate !== null && successRate < 40) {
+        qualitySignals.push('LOW_SUCCESS_RATE');
+      }
+      if (taskTypes.length < 2 && evidence.total > 0) qualitySignals.push('LOW_TASK_DIVERSITY');
+      return {
+        skillId: skill.id,
+        skillKey: skill.key,
+        skillName: skill.name,
+        evidence: {
+          attempts: evidence.total,
+          successful: evidence.successful,
+          successRate,
+          taskTypeCount: taskTypes.length,
+          taskTypes,
+        },
+        learners: progress.learners,
+        mastery: {
+          mastered: progress.mastered,
+          proficient: progress.proficient,
+          developing: progress.developing,
+          practicing: progress.practicing,
+          masteryRate,
+        },
+        qualitySignals,
+      };
+    });
+
+    const totals = skillMetrics.reduce((sum, skill) => ({
+      skills: sum.skills + 1,
+      evidence: sum.evidence + skill.evidence.attempts,
+      successfulEvidence: sum.successfulEvidence + skill.evidence.successful,
+      learners: sum.learners + skill.learners,
+      masteredLearners: sum.masteredLearners + skill.mastery.mastered,
+    }), { skills: 0, evidence: 0, successfulEvidence: 0, learners: 0, masteredLearners: 0 });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        ...totals,
+        successRate: totals.evidence
+          ? Math.round((totals.successfulEvidence / totals.evidence) * 100)
+          : null,
+        masteryRate: totals.learners
+          ? Math.round((totals.masteredLearners / totals.learners) * 100)
+          : null,
+      },
+      skills: skillMetrics,
+    };
+  }
+
+
+  async getTaskLearningAnalytics(): Promise<object> {
+    const [groups, puzzleRows, skillRows] = await Promise.all([
+      this.prisma.learningEvidence.groupBy({
+        by: ['puzzleId', 'skillId', 'profileId', 'taskType', 'evidenceType', 'isCorrect'],
+        _count: { _all: true },
+      }),
+      this.prisma.puzzle.findMany({
+        where: { learningEvidence: { some: {} } },
+        select: {
+          id: true,
+          orderNo: true,
+          type: true,
+          level: {
+            select: {
+              orderNo: true,
+              title: true,
+              questVersion: {
+                select: {
+                  id: true,
+                  versionNo: true,
+                  title: true,
+                  quest: { select: { slug: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.skill.findMany({ select: { id: true, key: true, name: true } }),
+    ]);
+
+    const profileIds = [...new Set(groups.map((group) => group.profileId))];
+    const skillIds = [...new Set(groups.map((group) => group.skillId))];
+    const progressRows = profileIds.length && skillIds.length
+      ? await this.prisma.profileSkillProgress.findMany({
+          where: { profileId: { in: profileIds }, skillId: { in: skillIds } },
+          select: { profileId: true, skillId: true, status: true },
+        })
+      : [];
+    const statusByLearnerSkill = new Map(
+      progressRows.map((row) => [`${row.profileId}:${row.skillId}`, row.status]),
+    );
+    const puzzleById = new Map(puzzleRows.map((puzzle) => [puzzle.id, puzzle]));
+    const skillById = new Map(skillRows.map((skill) => [skill.id, skill]));
+
+    type Metric = {
+      attempts: number;
+      successful: number;
+      learners: Set<string>;
+      evidenceTypes: Set<string>;
+      mastered: { attempts: number; successful: number; learners: Set<string> };
+      notMastered: { attempts: number; successful: number; learners: Set<string> };
+    };
+    const metrics = new Map<string, Metric>();
+    for (const group of groups) {
+      const key = `${group.puzzleId}:${group.skillId}`;
+      const metric = metrics.get(key) ?? {
+        attempts: 0,
+        successful: 0,
+        learners: new Set<string>(),
+        evidenceTypes: new Set<string>(),
+        mastered: { attempts: 0, successful: 0, learners: new Set<string>() },
+        notMastered: { attempts: 0, successful: 0, learners: new Set<string>() },
+      };
+      const count = group._count._all;
+      const mastered = statusByLearnerSkill.get(`${group.profileId}:${group.skillId}`) === 'MASTERED';
+      metric.attempts += count;
+      if (group.isCorrect) metric.successful += count;
+      metric.learners.add(group.profileId);
+      metric.evidenceTypes.add(group.evidenceType);
+      const cohort = mastered ? metric.mastered : metric.notMastered;
+      cohort.attempts += count;
+      if (group.isCorrect) cohort.successful += count;
+      cohort.learners.add(group.profileId);
+      metrics.set(key, metric);
+    }
+
+    const tasks = [...metrics.entries()].map(([key, metric]) => {
+      const [puzzleId, skillId] = key.split(':');
+      const puzzle = puzzleById.get(puzzleId);
+      const skill = skillById.get(skillId);
+      const successRate = metric.attempts
+        ? Math.round((metric.successful / metric.attempts) * 100)
+        : null;
+      const masteredRate = metric.mastered.attempts
+        ? (metric.mastered.successful / metric.mastered.attempts) * 100
+        : null;
+      const notMasteredRate = metric.notMastered.attempts
+        ? (metric.notMastered.successful / metric.notMastered.attempts) * 100
+        : null;
+      const separation = masteredRate !== null && notMasteredRate !== null
+        ? Math.round(masteredRate - notMasteredRate)
+        : null;
+      const qualitySignals: string[] = [];
+      if (metric.attempts > 0 && metric.attempts < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (metric.attempts >= 10 && metric.evidenceTypes.size === 1) qualitySignals.push('LOW_EVIDENCE_DIVERSITY');
+      if (metric.attempts >= 10 && successRate !== null && successRate < 40) {
+        qualitySignals.push('LOW_SUCCESS_RATE');
+      }
+      if (
+        metric.mastered.attempts >= 5
+        && metric.notMastered.attempts >= 5
+        && separation !== null
+        && Math.abs(separation) < 10
+      ) {
+        qualitySignals.push('LOW_MASTERY_SEPARATION');
+      }
+      return {
+        puzzleId,
+        puzzleOrder: puzzle?.orderNo ?? null,
+        puzzleType: puzzle?.type ?? null,
+        levelOrder: puzzle?.level.orderNo ?? null,
+        levelTitle: puzzle?.level.title ?? null,
+        questVersionId: puzzle?.level.questVersion.id ?? null,
+        questVersion: puzzle?.level.questVersion.versionNo ?? null,
+        questTitle: puzzle?.level.questVersion.title ?? null,
+        questSlug: puzzle?.level.questVersion.quest.slug ?? null,
+        skillId,
+        skillKey: skill?.key ?? null,
+        skillName: skill?.name ?? null,
+        attempts: metric.attempts,
+        successful: metric.successful,
+        successRate,
+        learners: metric.learners.size,
+        evidenceTypeCount: metric.evidenceTypes.size,
+        masteryDiscrimination: {
+          mastered: {
+            attempts: metric.mastered.attempts,
+            learners: metric.mastered.learners.size,
+            successRate: masteredRate === null ? null : Math.round(masteredRate),
+          },
+          notMastered: {
+            attempts: metric.notMastered.attempts,
+            learners: metric.notMastered.learners.size,
+            successRate: notMasteredRate === null ? null : Math.round(notMasteredRate),
+          },
+          successRateGap: separation,
+        },
+        qualitySignals,
+      };
+    }).sort((left, right) => {
+      const successRateOrder = (left.successRate ?? 101) - (right.successRate ?? 101);
+      if (successRateOrder !== 0) return successRateOrder;
+      const questOrder = (left.questSlug ?? '').localeCompare(right.questSlug ?? '');
+      if (questOrder !== 0) return questOrder;
+      const levelOrder = (left.levelOrder ?? 0) - (right.levelOrder ?? 0);
+      return levelOrder || (left.puzzleOrder ?? 0) - (right.puzzleOrder ?? 0);
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        puzzleSkillPairs: tasks.length,
+        attempts: tasks.reduce((sum, task) => sum + task.attempts, 0),
+        learners: new Set(groups.map((group) => group.profileId)).size,
+        flagged: tasks.filter((task) => task.qualitySignals.length > 0).length,
+      },
+      tasks,
+      notes: {
+        masteryCohorts: 'Mastery cohorts use each learner skill current status, not historical status at attempt time.',
+        lowMasterySeparation: 'LOW_MASTERY_SEPARATION is evaluated only when both cohorts have at least five evidence observations.',
+      },
+    };
+  }
+
+  async createSkill(user: AuthenticatedUser, dto: CreateSkillDto): Promise<object> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.lockSkillGraph(tx);
+        const id = randomUUID();
+        await this.assertSkillPrerequisites(tx, id, dto.prerequisiteIds ?? []);
+        const created = await tx.skill.create({
+          data: {
+            id,
+            key: dto.key.trim(),
+            name: dto.name.trim(),
+            description: dto.description?.trim() || null,
+            difficulty: dto.difficulty ?? null,
+          },
+        });
+        if (dto.prerequisiteIds?.length) {
+          await tx.skillPrerequisite.createMany({
+            data: dto.prerequisiteIds.map((prerequisiteId) => ({
+              skillId: created.id,
+              prerequisiteId,
+            })),
+          });
+        }
+        const result = await tx.skill.findUnique({
+          where: { id: created.id },
+          include: {
+            prerequisites: {
+              include: {
+                prerequisite: {
+                  select: { id: true, key: true, name: true, description: true, difficulty: true },
+                },
+              },
+            },
+          },
+        });
+        if (!result) throw new NotFoundException('Created skill could not be reloaded.');
+        await this.audit(tx, user.userId, 'skill.created', 'SKILL', created.id, undefined, {
+          id: created.id,
+          key: created.key,
+          name: created.name,
+          description: created.description,
+          difficulty: created.difficulty,
+          prerequisiteIds: dto.prerequisiteIds ?? [],
+        });
+        return {
+          id: result.id,
+          key: result.key,
+          name: result.name,
+          description: result.description,
+          difficulty: result.difficulty,
+          prerequisites: result.prerequisites.map((edge) => edge.prerequisite),
+        };
+      });
+    } catch (error) {
+      if (this.isPrismaCode(error, 'P2002')) {
+        throw new ConflictException('A skill with this key already exists.');
+      }
+      throw error;
+    }
+  }
+
+  async updateSkill(user: AuthenticatedUser, id: string, dto: UpdateSkillDto): Promise<object> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockSkillGraph(tx);
+      const current = await tx.skill.findUnique({
+        where: { id },
+        include: {
+          prerequisites: {
+            include: { prerequisite: { select: { id: true, key: true, name: true } } },
+          },
+        },
+      });
+      if (!current) throw new NotFoundException('Skill not found.');
+
+      if (dto.name !== undefined && dto.name.trim() !== current.name) {
+        const referenced = await tx.questVersion.findFirst({
+          where: { skills: { has: current.name } },
+          select: { id: true },
+        });
+        if (referenced) {
+          throw new ConflictException(
+            'A skill name cannot change after quest versions reference it. Keep the stable label or create a new skill.',
+          );
+        }
+      }
+
+      if (dto.prerequisiteIds !== undefined) {
+        await this.assertSkillPrerequisites(tx, id, dto.prerequisiteIds);
+        await tx.skillPrerequisite.deleteMany({ where: { skillId: id } });
+        if (dto.prerequisiteIds.length) {
+          await tx.skillPrerequisite.createMany({
+            data: dto.prerequisiteIds.map((prerequisiteId) => ({
+              skillId: id,
+              prerequisiteId,
+            })),
+          });
+        }
+      }
+
+      const updated = await tx.skill.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+          ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty || null } : {}),
+        },
+      });
+      const result = await tx.skill.findUnique({
+        where: { id },
+        include: {
+          prerequisites: {
+            include: {
+              prerequisite: {
+                select: { id: true, key: true, name: true, description: true, difficulty: true },
+              },
+            },
+          },
+        },
+      });
+      if (!result) throw new NotFoundException('Updated skill could not be reloaded.');
+      await this.audit(tx, user.userId, 'skill.updated', 'SKILL', id, {
+        key: current.key,
+        name: current.name,
+        description: current.description,
+        difficulty: current.difficulty,
+        prerequisiteIds: current.prerequisites.map((edge) => edge.prerequisiteId),
+      }, {
+        key: updated.key,
+        name: updated.name,
+        description: updated.description,
+        difficulty: updated.difficulty,
+        prerequisiteIds: result.prerequisites.map((edge) => edge.prerequisiteId),
+      });
+      return {
+        id: result.id,
+        key: result.key,
+        name: result.name,
+        description: result.description,
+        difficulty: result.difficulty,
+        prerequisites: result.prerequisites.map((edge) => edge.prerequisite),
+      };
+    });
   }
 
   async createQuest(user: AuthenticatedUser, dto: CreateQuestDto): Promise<object> {
@@ -178,6 +702,7 @@ export class AdminService {
     if (!category) throw new BadRequestException('Choose an active published category.');
 
     return this.prisma.$transaction(async (tx) => {
+      const skillNames = await this.resolveSkillNames(tx, dto.skills);
       const quest = await tx.quest.create({
         data: {
           categoryId: dto.categoryId,
@@ -194,7 +719,7 @@ export class AdminService {
           description: dto.description.trim(),
           internalName: dto.internalName?.trim() || null,
           objectives: jsonInput(dto.objectives),
-          skills: dto.skills.map((skill) => skill.trim()),
+          skills: skillNames,
           ageMin: dto.ageMin,
           ageMax: dto.ageMax,
           difficulty: dto.difficulty,
@@ -226,6 +751,9 @@ export class AdminService {
     if (!version) {
       throw new ConflictException('Create a new draft version before editing this quest.');
     }
+    if (!canManageQuestDraft(user, version.authorId)) {
+      throw new ForbiddenException('You can only edit your own draft. Ask an administrator to reassign the draft.');
+    }
 
     if (dto.categoryId) {
       const category = await this.prisma.category.findFirst({
@@ -252,6 +780,31 @@ export class AdminService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const lockedVersion = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "quest_versions"
+        WHERE "id" = ${version.id}::uuid
+          AND "status" = 'DRAFT'
+        FOR UPDATE
+      `;
+      if (lockedVersion.length !== 1) {
+        throw new ConflictException('The draft is no longer editable. Reload the quest and try again.');
+      }
+      const currentDraft = await this.getLatestDraftVersion(id, tx);
+      if (currentDraft.id !== version.id) {
+        throw new ConflictException('The current draft changed. Reload the quest and try again.');
+      }
+      // Re-check author ownership after locking the row to close reassignment races.
+      if (!canManageQuestDraft(user, currentDraft.authorId)) {
+        throw new ForbiddenException('You can only edit your own draft. Ask an administrator to reassign the draft.');
+      }
+      if ((dto.ageMin ?? currentDraft.ageMin) > (dto.ageMax ?? currentDraft.ageMax)) {
+        throw new BadRequestException('Minimum age cannot exceed maximum age.');
+      }
+
+      const skillNames = dto.skills !== undefined
+        ? await this.resolveSkillNames(tx, dto.skills)
+        : undefined;
       const updatedQuest = await tx.quest.update({
         where: { id },
         data: {
@@ -267,7 +820,7 @@ export class AdminService {
           ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
           ...(dto.internalName !== undefined ? { internalName: dto.internalName.trim() || null } : {}),
           ...(dto.objectives !== undefined ? { objectives: jsonInput(dto.objectives) } : {}),
-          ...(dto.skills !== undefined ? { skills: dto.skills.map((skill) => skill.trim()) } : {}),
+          ...(skillNames !== undefined ? { skills: skillNames } : {}),
           ...(dto.ageMin !== undefined ? { ageMin: dto.ageMin } : {}),
           ...(dto.ageMax !== undefined ? { ageMax: dto.ageMax } : {}),
           ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
@@ -374,17 +927,43 @@ export class AdminService {
   }
 
   async submitForReview(user: AuthenticatedUser, id: string): Promise<object> {
-    const version = await this.getLatestDraftVersion(id);
-    const readiness = await this.checkPublishReadiness(version);
-    if (readiness.errors.length) {
-      throw new BadRequestException({ message: 'Quest is not ready for review.', errors: readiness.errors });
-    }
-
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.questVersion.update({
-        where: { id: version.id },
+      let version = await this.getLatestDraftVersion(id, tx);
+      const lockedVersion = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "quest_versions"
+        WHERE "id" = ${version.id}::uuid
+          AND "status" = 'DRAFT'
+        FOR UPDATE
+      `;
+      if (lockedVersion.length !== 1) {
+        throw new ConflictException('The draft is no longer available for review. Reload the quest and try again.');
+      }
+
+      // Re-read under the lock so the ownership and readiness checks use the
+      // same current draft that will be transitioned.
+      version = await this.getLatestDraftVersion(id, tx);
+      if (version.id !== lockedVersion[0]!.id) {
+        throw new ConflictException('The current draft changed. Reload the quest and try again.');
+      }
+      if (!canManageQuestDraft(user, version.authorId)) {
+        throw new ForbiddenException('Only the draft author or an administrator can submit this version for review.');
+      }
+      const readiness = await this.checkPublishReadiness(version);
+      if (readiness.errors.length) {
+        throw new BadRequestException({ message: 'Quest is not ready for review.', errors: readiness.errors });
+      }
+
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'DRAFT' },
         data: { status: 'REVIEW', reviewerId: null, approvedAt: null, approvedById: null },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('The draft is no longer available for review. Reload the quest and try again.');
+      }
+      const updated = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updated) throw new ConflictException('The submitted version could not be reloaded.');
+
       await this.audit(tx, user.userId, 'quest.submitted_for_review', 'QUEST', id, version, {
         versionId: updated.id, versionNo: updated.versionNo, status: updated.status,
       });
@@ -402,8 +981,8 @@ export class AdminService {
       if (version.authorId && version.authorId === user.userId) {
         throw new ForbiddenException('Authors cannot approve their own content.');
       }
-      const updated = await tx.questVersion.update({
-        where: { id: version.id },
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'REVIEW' },
         data: {
           status: 'APPROVED',
           reviewerId: user.userId,
@@ -411,6 +990,12 @@ export class AdminService {
           approvedAt: new Date(),
         },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('This quest version has already been reviewed. Refresh the editorial queue.');
+      }
+      const updated = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updated) throw new ConflictException('The approved quest version could not be reloaded.');
+
       await this.audit(tx, user.userId, 'quest.approved', 'QUEST', id, {
         versionId: version.id, status: version.status,
       }, { versionId: updated.id, status: updated.status, reviewerId: user.userId });
@@ -423,6 +1008,15 @@ export class AdminService {
       const version = await tx.questVersion.findFirst({
         where: { questId: id, status: 'APPROVED' },
         orderBy: { versionNo: 'desc' },
+        include: {
+          levels: {
+            orderBy: { orderNo: 'asc' },
+            include: {
+              puzzles: { orderBy: { orderNo: 'asc' }, include: { hints: true } },
+            },
+          },
+          quest: { include: { category: true } },
+        },
       });
       if (!version) throw new ConflictException('Only an approved version can be published.');
       if (!version.approvedAt || !version.approvedById) {
@@ -439,15 +1033,27 @@ export class AdminService {
       if (quest.category.status !== 'PUBLISHED') {
         throw new ConflictException('The quest category must be published first.');
       }
+      const readiness = await this.checkPublishReadiness(version, tx);
+      if (readiness.errors.length) {
+        throw new ConflictException({
+          message: 'The approved quest version no longer satisfies publication readiness.',
+          errors: readiness.errors,
+        });
+      }
 
-      const updatedVersion = await tx.questVersion.update({
-        where: { id: version.id },
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'APPROVED' },
         data: {
           status: 'PUBLISHED',
           publishedAt: new Date(),
           publishedById: user.userId,
         },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('This quest version has already been published. Refresh the editorial queue.');
+      }
+      const updatedVersion = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updatedVersion) throw new ConflictException('The published quest version could not be reloaded.');
       await tx.quest.update({ where: { id }, data: { status: 'PUBLISHED' } });
       await this.audit(tx, user.userId, 'quest.published', 'QUEST', id, {
         versionId: version.id, status: version.status,
@@ -922,8 +1528,11 @@ export class AdminService {
     }
   }
 
-  private async getLatestDraftVersion(questId: string) {
-    const version = await this.prisma.questVersion.findFirst({
+  private async getLatestDraftVersion(
+    questId: string,
+    client: Pick<Prisma.TransactionClient, 'questVersion'> = this.prisma,
+  ) {
+    const version = await client.questVersion.findFirst({
       where: { questId, status: 'DRAFT' },
       orderBy: { versionNo: 'desc' },
       include: {
@@ -940,15 +1549,101 @@ export class AdminService {
     return version;
   }
 
-  private async checkPublishReadiness(version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>) {
+  private async checkPublishReadiness(
+    version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>,
+    client: Pick<Transaction, 'skill' | 'skillPrerequisite'> = this.prisma,
+  ) {
     const errors: string[] = [];
     if (!version.title.trim()) errors.push('Title is required.');
     if (version.summary.trim().length < 20) errors.push('Summary must contain at least 20 characters.');
     if (version.description.trim().length < 50) errors.push('Description must contain at least 50 characters.');
-    if (!Array.isArray(version.objectives) || version.objectives.length < 2 || version.objectives.length > 4) {
+    const objectives = Array.isArray(version.objectives)
+      ? version.objectives.filter((value): value is string => typeof value === 'string')
+      : [];
+    if (objectives.length < 2 || objectives.length > 4) {
       errors.push('Provide 2–4 learning objectives.');
     }
-    if (version.skills.length < 1) errors.push('Select at least one skill.');
+    if (version.skills.length < 1) {
+      errors.push('Select at least one skill.');
+    }
+
+    const labels = version.skills.map((skill) => skill.trim());
+    const catalog = labels.length
+      ? await client.skill.findMany({
+          select: { id: true, key: true, name: true },
+        })
+      : [];
+    const byLabel = labels.map((label) => {
+      const key = normalizeSkillKey(label);
+      return catalog.find((skill) => (
+        skill.key === key || skill.name === label || normalizeSkillKey(skill.name) === key
+      ));
+    });
+    const unknown = labels.filter((_, index) => !byLabel[index]);
+    if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
+
+    for (const skill of byLabel) {
+      if (!skill) continue;
+      const skillPhrase = normalizeSkillText(skill.name);
+      const linked = objectives.some((objective) => {
+        const objectiveText = `-${normalizeSkillText(objective)}-`;
+        return objectiveText.includes(`-${skillPhrase}-`);
+      });
+      if (!linked) {
+        errors.push(`Learning objective must explicitly cover skill "${skill.name}". Mention the skill name in at least one objective.`);
+      }
+    }
+
+    const puzzles = version.levels.flatMap((level) => level.puzzles);
+    const taskTypes = new Set(puzzles.map((puzzle) => puzzle.type));
+    for (const skill of byLabel) {
+      if (!skill) continue;
+      if (puzzles.length < 3) {
+        errors.push(`Skill "${skill.name}": at least 3 distinct puzzles are required to collect mastery evidence (found ${puzzles.length}).`);
+      }
+      if (taskTypes.size < 2) {
+        errors.push(`Skill "${skill.name}": at least 2 task types are required to collect diverse mastery evidence (found ${taskTypes.size}).`);
+      }
+    }
+
+    if (byLabel.some(Boolean)) {
+      const edges = await client.skillPrerequisite.findMany({
+        select: { skillId: true, prerequisiteId: true },
+      });
+      const skillIds = new Set(catalog.map((skill) => skill.id));
+      const prerequisitesBySkill = new Map<string, string[]>();
+      for (const edge of edges) {
+        if (!skillIds.has(edge.skillId) || !skillIds.has(edge.prerequisiteId)) {
+          errors.push('Skill prerequisite graph contains a reference to a missing catalog skill.');
+          continue;
+        }
+        const list = prerequisitesBySkill.get(edge.skillId) ?? [];
+        list.push(edge.prerequisiteId);
+        prerequisitesBySkill.set(edge.skillId, list);
+      }
+
+      const catalogById = new Map(catalog.map((skill) => [skill.id, skill]));
+      const visited = new Set<string>();
+      const active = new Set<string>();
+      const visit = (skillId: string): void => {
+        if (active.has(skillId)) {
+          const skill = catalogById.get(skillId);
+          errors.push(`Skill prerequisite chain contains a cycle at "${skill?.name ?? skillId}".`);
+          return;
+        }
+        if (visited.has(skillId)) return;
+        active.add(skillId);
+        for (const prerequisiteId of prerequisitesBySkill.get(skillId) ?? []) {
+          visit(prerequisiteId);
+        }
+        active.delete(skillId);
+        visited.add(skillId);
+      };
+      for (const skill of byLabel) {
+        if (skill) visit(skill.id);
+      }
+    }
+
     if (version.ageMin < 14 || version.ageMin > version.ageMax) errors.push('Age range is invalid.');
     if (!version.locale || !version.difficulty || version.durationMin < 1) errors.push('Locale, difficulty and duration are required.');
     const seo = version.seo && typeof version.seo === 'object' && !Array.isArray(version.seo)
@@ -991,6 +1686,98 @@ export class AdminService {
     }
     if (puzzleCount < 1) errors.push('At least one puzzle is required.');
     return { errors };
+  }
+
+  private async resolveSkillNames(tx: Transaction, values: string[]): Promise<string[]> {
+    const normalized = values.map(normalizeSkillKey);
+    if (new Set(normalized).size !== normalized.length) {
+      throw new BadRequestException('Select each skill only once.');
+    }
+    const skills = await tx.skill.findMany({
+      where: {
+        OR: [
+          { key: { in: normalized } },
+          { name: { in: values.map((value) => value.trim()) } },
+        ],
+      },
+      select: { id: true, key: true, name: true },
+    });
+    const resolved = normalized.map((key) => (
+      skills.find((skill) => skill.key === key || normalizeSkillKey(skill.name) === key)
+    ));
+    const missing = values.filter((_, index) => !resolved[index]);
+    if (missing.length) {
+      throw new BadRequestException({
+        message: 'Every selected quest skill must exist in the skill catalog.',
+        unknownSkills: missing,
+      });
+    }
+    const distinctIds = new Set(resolved.map((skill) => skill!.id));
+    if (distinctIds.size !== resolved.length) {
+      throw new BadRequestException('Select each skill only once.');
+    }
+    // Preserve the legacy QuestVersion.skills display-label contract. Skill
+    // keys remain stable catalog identifiers and are resolved on the backend.
+    return resolved.map((skill) => skill!.name);
+  }
+
+  private async lockSkillGraph(tx: Transaction): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "skills" ORDER BY "id" FOR UPDATE
+    `;
+  }
+
+  private async assertSkillPrerequisites(
+    tx: Transaction,
+    skillId: string,
+    prerequisiteIds: string[],
+  ): Promise<void> {
+    if (new Set(prerequisiteIds).size !== prerequisiteIds.length) {
+      throw new BadRequestException('A prerequisite may be selected only once.');
+    }
+    if (prerequisiteIds.includes(skillId)) {
+      throw new BadRequestException('A skill cannot depend on itself.');
+    }
+    if (prerequisiteIds.length === 0) return;
+
+    const existing = await tx.skill.findMany({
+      where: { id: { in: prerequisiteIds } },
+      select: { id: true },
+    });
+    if (existing.length !== prerequisiteIds.length) {
+      throw new BadRequestException('Every prerequisite must reference an existing skill.');
+    }
+
+    const edges = await tx.skillPrerequisite.findMany({
+      select: { skillId: true, prerequisiteId: true },
+    });
+    const prerequisitesBySkill = new Map<string, string[]>();
+    for (const edge of edges) {
+      const list = prerequisitesBySkill.get(edge.skillId) ?? [];
+      list.push(edge.prerequisiteId);
+      prerequisitesBySkill.set(edge.skillId, list);
+    }
+
+    for (const prerequisiteId of prerequisiteIds) {
+      const pending = [prerequisiteId];
+      const visited = new Set<string>();
+      while (pending.length) {
+        const current = pending.pop()!;
+        if (current === skillId) {
+          throw new BadRequestException('Skill prerequisites cannot contain a cycle.');
+        }
+        if (visited.has(current)) continue;
+        visited.add(current);
+        pending.push(...(prerequisitesBySkill.get(current) ?? []));
+      }
+    }
+  }
+
+  private isPrismaCode(error: unknown, code: string): boolean {
+    return typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && (error as { code?: unknown }).code === code;
   }
 
   private async audit(
