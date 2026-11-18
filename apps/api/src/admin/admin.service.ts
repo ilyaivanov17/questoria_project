@@ -174,6 +174,172 @@ export class AdminService {
     return quest;
   }
 
+  async listSkills(): Promise<object[]> {
+    const skills = await this.prisma.skill.findMany({
+      orderBy: [{ name: 'asc' }, { key: 'asc' }],
+      include: {
+        prerequisites: {
+          include: {
+            prerequisite: {
+              select: { id: true, key: true, name: true, description: true, difficulty: true },
+            },
+          },
+        },
+        unlocks: {
+          include: {
+            skill: { select: { id: true, key: true, name: true } },
+          },
+        },
+        _count: { select: { evidence: true, progress: true } },
+      },
+    });
+
+    return skills.map((skill) => ({
+      id: skill.id,
+      key: skill.key,
+      name: skill.name,
+      description: skill.description,
+      difficulty: skill.difficulty,
+      prerequisites: skill.prerequisites.map((edge) => edge.prerequisite),
+      unlocks: skill.unlocks.map((edge) => edge.skill),
+      evidenceCount: skill._count.evidence,
+      learnerCount: skill._count.progress,
+      createdAt: skill.createdAt,
+    }));
+  }
+
+  async createSkill(user: AuthenticatedUser, dto: CreateSkillDto): Promise<object> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.lockSkillGraph(tx);
+        const id = randomUUID();
+        await this.assertSkillPrerequisites(tx, id, dto.prerequisiteIds ?? []);
+        const created = await tx.skill.create({
+          data: {
+            id,
+            key: dto.key.trim(),
+            name: dto.name.trim(),
+            description: dto.description?.trim() || null,
+            difficulty: dto.difficulty ?? null,
+          },
+        });
+        if (dto.prerequisiteIds?.length) {
+          await tx.skillPrerequisite.createMany({
+            data: dto.prerequisiteIds.map((prerequisiteId) => ({
+              skillId: created.id,
+              prerequisiteId,
+            })),
+          });
+        }
+        const result = await tx.skill.findUnique({
+          where: { id: created.id },
+          include: {
+            prerequisites: {
+              include: {
+                prerequisite: {
+                  select: { id: true, key: true, name: true, description: true, difficulty: true },
+                },
+              },
+            },
+          },
+        });
+        if (!result) throw new NotFoundException('Created skill could not be reloaded.');
+        await this.audit(tx, user.userId, 'skill.created', 'SKILL', created.id, undefined, {
+          id: created.id,
+          key: created.key,
+          name: created.name,
+          description: created.description,
+          difficulty: created.difficulty,
+          prerequisiteIds: dto.prerequisiteIds ?? [],
+        });
+        return {
+          id: result.id,
+          key: result.key,
+          name: result.name,
+          description: result.description,
+          difficulty: result.difficulty,
+          prerequisites: result.prerequisites.map((edge) => edge.prerequisite),
+        };
+      });
+    } catch (error) {
+      if (this.isPrismaCode(error, 'P2002')) {
+        throw new ConflictException('A skill with this key already exists.');
+      }
+      throw error;
+    }
+  }
+
+  async updateSkill(user: AuthenticatedUser, id: string, dto: UpdateSkillDto): Promise<object> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockSkillGraph(tx);
+      const current = await tx.skill.findUnique({
+        where: { id },
+        include: {
+          prerequisites: {
+            include: { prerequisite: { select: { id: true, key: true, name: true } } },
+          },
+        },
+      });
+      if (!current) throw new NotFoundException('Skill not found.');
+
+      if (dto.prerequisiteIds !== undefined) {
+        await this.assertSkillPrerequisites(tx, id, dto.prerequisiteIds);
+        await tx.skillPrerequisite.deleteMany({ where: { skillId: id } });
+        if (dto.prerequisiteIds.length) {
+          await tx.skillPrerequisite.createMany({
+            data: dto.prerequisiteIds.map((prerequisiteId) => ({
+              skillId: id,
+              prerequisiteId,
+            })),
+          });
+        }
+      }
+
+      const updated = await tx.skill.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+          ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty || null } : {}),
+        },
+      });
+      const result = await tx.skill.findUnique({
+        where: { id },
+        include: {
+          prerequisites: {
+            include: {
+              prerequisite: {
+                select: { id: true, key: true, name: true, description: true, difficulty: true },
+              },
+            },
+          },
+        },
+      });
+      if (!result) throw new NotFoundException('Updated skill could not be reloaded.');
+      await this.audit(tx, user.userId, 'skill.updated', 'SKILL', id, {
+        key: current.key,
+        name: current.name,
+        description: current.description,
+        difficulty: current.difficulty,
+        prerequisiteIds: current.prerequisites.map((edge) => edge.prerequisiteId),
+      }, {
+        key: updated.key,
+        name: updated.name,
+        description: updated.description,
+        difficulty: updated.difficulty,
+        prerequisiteIds: result.prerequisites.map((edge) => edge.prerequisiteId),
+      });
+      return {
+        id: result.id,
+        key: result.key,
+        name: result.name,
+        description: result.description,
+        difficulty: result.difficulty,
+        prerequisites: result.prerequisites.map((edge) => edge.prerequisite),
+      };
+    });
+  }
+
   async createQuest(user: AuthenticatedUser, dto: CreateQuestDto): Promise<object> {
     this.validateQuestMetadata(dto);
     const category = await this.prisma.category.findFirst({
