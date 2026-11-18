@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { ConflictException } from '@nestjs/common';
 import { QuestService } from './quest.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -184,7 +183,8 @@ test(
       { runId: runB.id, attemptId: randomUUID() },
     ];
 
-    // Both requests race through independent Serializable transactions.
+    // The profile-row lock serializes same-player submissions before state
+    // is read, so both requests should complete without a retryable 409.
     const concurrent = await Promise.allSettled(
       submissions.map(({ runId, attemptId }) =>
         service.submitAttempt(profileId!, runId, puzzleId, {
@@ -194,29 +194,15 @@ test(
       ),
     );
 
-    // PostgreSQL may serialize both or abort one with P2034. A serialization
-    // loser must be safely retryable with its original attemptId.
-    const receipts: AttemptReceipt[] = [];
-    for (let index = 0; index < concurrent.length; index += 1) {
-      const outcome = concurrent[index]!;
-      if (outcome.status === 'fulfilled') {
-        receipts.push(outcome.value as AttemptReceipt);
-        continue;
+    const receipts: AttemptReceipt[] = concurrent.map((outcome, index) => {
+      if (outcome.status === 'rejected') {
+        throw new Error(
+          `same-profile submission ${index + 1} should serialize instead of failing: ${String(outcome.reason)}`,
+          { cause: outcome.reason },
+        );
       }
-
-      assert.ok(
-        outcome.reason instanceof ConflictException,
-        'only the documented retryable 409 conflict is acceptable for the losing transaction',
-      );
-      const submission = submissions[index]!;
-      // Retry serially: if both initial snapshots were invalidated, the
-      // first retry becomes the winner and the second observes its receipt.
-      const retried = await service.submitAttempt(profileId!, submission.runId, puzzleId, {
-        attemptId: submission.attemptId,
-        answer: { optionId: 'correct' },
-      });
-      receipts.push(retried as AttemptReceipt);
-    }
+      return outcome.value as AttemptReceipt;
+    });
 
     assert.equal(receipts.length, 2);
     assert.ok(receipts.every((receipt) => receipt.result === 'correct'));
