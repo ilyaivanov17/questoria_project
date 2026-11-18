@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import { seedLearningLibrary } from './seed-content.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -27,6 +28,8 @@ async function seed(): Promise<void> {
         [randomUUID(), key, name],
       );
     }
+
+    await seedLearningLibrary(client);
 
     const category = await client.query<{ id: string }>(
       `INSERT INTO categories (id, slug, locale, title, description, status, sort_order, updated_at)
