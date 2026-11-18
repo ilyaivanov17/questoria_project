@@ -26,6 +26,14 @@ export type LearningEvidenceKind =
   | 'delayed_check'
   | 'transfer';
 
+export interface PlayerSkillPrerequisite {
+  id: string;
+  key: string;
+  name: string;
+  status: PlayerSkillStatus;
+  mastered: boolean;
+}
+
 export interface PlayerSkillProgress {
   id: string;
   key: string;
@@ -33,6 +41,8 @@ export interface PlayerSkillProgress {
   description: string | null;
   difficulty: string | null;
   status: PlayerSkillStatus;
+  available: boolean;
+  prerequisites: PlayerSkillPrerequisite[];
   attemptsCount: number;
   successfulAttempts: number;
   distinctPuzzles: number;
@@ -67,4 +77,43 @@ export interface PlayerSkillsResponse {
     practicedSkills: number;
     masteredSkills: number;
   };
+}
+
+
+export interface AdminSkillCatalogItem {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  difficulty: string | null;
+  prerequisites: Array<{
+    id: string;
+    key: string;
+    name: string;
+    description: string | null;
+    difficulty: string | null;
+  }>;
+  unlocks: Array<{
+    id: string;
+    key: string;
+    name: string;
+  }>;
+  evidenceCount: number;
+  learnerCount: number;
+  createdAt: string;
+}
+
+export interface CreateSkillRequest {
+  key: string;
+  name: string;
+  description?: string;
+  difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  prerequisiteIds?: string[];
+}
+
+export interface UpdateSkillRequest {
+  name?: string;
+  description?: string | null;
+  difficulty?: 'beginner' | 'intermediate' | 'advanced' | null;
+  prerequisiteIds?: string[];
 }
