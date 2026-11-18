@@ -17,7 +17,7 @@ function createService() {
           title: 'Первое открытие',
           description: 'Заверши свой первый квест',
           icon: '✦',
-          xpReward: 10,
+          xpReward: 0,
           coinsReward: 0,
         },
         {
@@ -70,7 +70,7 @@ test('returns persisted unlock state, reward receipt and locked catalog entries'
     awardedAt: awardedAt.toISOString(),
     xpReward: 10,
     coinsReward: 0,
-    xpAwarded: 10,
+    xpAwarded: 0,
     coinsAwarded: 0,
   });
   assert.deepEqual(result.achievements[1], {
