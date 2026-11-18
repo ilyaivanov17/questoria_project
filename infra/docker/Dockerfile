@@ -46,6 +46,10 @@ FROM base AS api
 ENV NODE_ENV=production
 ENV API_PORT=4000
 COPY --from=api-production-dependencies --chown=node:node /app/node_modules ./node_modules
+# apps/api/src/main.ts imports dotenv/config at runtime although the workspace
+# currently declares dotenv only as a root development dependency.
+COPY --from=dependencies --chown=node:node /app/node_modules/.pnpm/dotenv@17.4.2/node_modules/dotenv ./node_modules/dotenv
+RUN node --input-type=module -e "await import('dotenv/config')"
 COPY --from=api-production-dependencies --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=api-production-dependencies --chown=node:node /app/packages/contracts ./packages/contracts
 COPY --from=api-production-dependencies --chown=node:node /app/apps/api/package.json ./apps/api/package.json
