@@ -9,10 +9,17 @@ import {
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
+import type { SubmitDemoAttemptDto } from './dto/submit-demo-attempt.dto.js';
 import type { StartRunDto } from './dto/start-run.dto.js';
 import { asJsonRecord, asOptionList } from './json.js';
 import { buildPuzzleReview, validatePuzzleAnswer } from './puzzle-validator.js';
-import type { PuzzleAnswerReview, PuzzleAttemptResponse, RunPuzzleReview } from '@questoria/contracts';
+import type {
+  PuzzleAnswerReview,
+  PuzzleAttemptResponse,
+  PublicQuestDemoAttemptResponse,
+  PublicQuestDemoPreviewResponse,
+  RunPuzzleReview,
+} from '@questoria/contracts';
 import {
   getNextAvailablePuzzle,
   getResolvedPuzzleIds,
@@ -134,6 +141,90 @@ export class QuestService {
           };
         }),
       })),
+    };
+  }
+
+  private async findGuestDemoPuzzle(slug: string) {
+    const quest = await this.prisma.quest.findFirst({
+      where: { slug, status: 'PUBLISHED' },
+      select: {
+        slug: true,
+        versions: {
+          where: { status: 'PUBLISHED' },
+          orderBy: { versionNo: 'desc' },
+          take: 1,
+          select: {
+            title: true,
+            levels: {
+              orderBy: { orderNo: 'asc' },
+              take: 1,
+              select: {
+                puzzles: {
+                  orderBy: { orderNo: 'asc' },
+                  take: 1,
+                  select: {
+                    type: true,
+                    publicPayload: true,
+                    solutionPrivate: true,
+                    hints: {
+                      orderBy: { orderNo: 'asc' },
+                      select: { body: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const version = quest?.versions[0];
+    const puzzle = version?.levels[0]?.puzzles[0];
+    if (!quest || !version || !puzzle) return null;
+
+    return { slug: quest.slug, questTitle: version.title, puzzle };
+  }
+
+  async getGuestDemoPreview(slug: string): Promise<PublicQuestDemoPreviewResponse | null> {
+    const demo = await this.findGuestDemoPuzzle(slug);
+    if (!demo) return null;
+
+    const payload = asJsonRecord(demo.puzzle.publicPayload);
+    return {
+      slug: demo.slug,
+      questTitle: demo.questTitle,
+      puzzle: {
+        type: demo.puzzle.type,
+        prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
+        options: asOptionList(payload.options),
+        items: asOptionList(payload.items),
+        placeholder: typeof payload.placeholder === 'string' ? payload.placeholder : null,
+        unit: typeof payload.unit === 'string' ? payload.unit : null,
+        hints: demo.puzzle.hints.map((hint) => hint.body),
+      },
+    };
+  }
+
+  async submitGuestDemoAttempt(
+    slug: string,
+    dto: SubmitDemoAttemptDto,
+  ): Promise<PublicQuestDemoAttemptResponse | null> {
+    const demo = await this.findGuestDemoPuzzle(slug);
+    if (!demo) return null;
+
+    const validation = validatePuzzleAnswer(
+      demo.puzzle.type,
+      demo.puzzle.publicPayload,
+      demo.puzzle.solutionPrivate,
+      dto.answer,
+    );
+
+    return {
+      result: validation.isCorrect ? 'correct' : 'incorrect',
+      feedback: validation.feedback,
+      progressSaved: false,
+      rewards: { xp: 0, coins: 0 },
     };
   }
 
