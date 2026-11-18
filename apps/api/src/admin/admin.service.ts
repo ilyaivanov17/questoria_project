@@ -450,7 +450,7 @@ export class AdminService {
       return {
         puzzleId,
         puzzleOrder: puzzle?.orderNo ?? null,
-        puzzleType: puzzle?.type ?? [...metric.taskTypes][0] ?? null,
+        puzzleType: puzzle?.type ?? null,
         levelOrder: puzzle?.level.orderNo ?? null,
         levelTitle: puzzle?.level.title ?? null,
         questVersionId: puzzle?.level.questVersion.id ?? null,
