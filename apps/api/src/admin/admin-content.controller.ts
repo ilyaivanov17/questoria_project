@@ -71,8 +71,8 @@ export class AdminContentController {
 
   @Get('quests')
   @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
-  listQuests(): Promise<object[]> {
-    return this.admin.listQuests();
+  listQuests(@Req() request: Request): Promise<object[]> {
+    return this.admin.listQuests(request.authUser as AuthenticatedUser);
   }
 
   @Post('quests')
@@ -83,8 +83,11 @@ export class AdminContentController {
 
   @Get('quests/:id')
   @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
-  getQuest(@Param('id', new ParseUUIDPipe()) id: string): Promise<object> {
-    return this.admin.getQuest(id);
+  getQuest(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<object> {
+    return this.admin.getQuest(request.authUser as AuthenticatedUser, id);
   }
 
   @Patch('quests/:id')
