@@ -349,6 +349,7 @@ export class AdminService {
     if (!category) throw new BadRequestException('Choose an active published category.');
 
     return this.prisma.$transaction(async (tx) => {
+      const skillNames = await this.resolveSkillNames(tx, dto.skills);
       const quest = await tx.quest.create({
         data: {
           categoryId: dto.categoryId,
@@ -365,7 +366,7 @@ export class AdminService {
           description: dto.description.trim(),
           internalName: dto.internalName?.trim() || null,
           objectives: jsonInput(dto.objectives),
-          skills: dto.skills.map((skill) => skill.trim()),
+          skills: skillNames,
           ageMin: dto.ageMin,
           ageMax: dto.ageMax,
           difficulty: dto.difficulty,
@@ -423,6 +424,9 @@ export class AdminService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const skillNames = dto.skills !== undefined
+        ? await this.resolveSkillNames(tx, dto.skills)
+        : undefined;
       const updatedQuest = await tx.quest.update({
         where: { id },
         data: {
@@ -438,7 +442,7 @@ export class AdminService {
           ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
           ...(dto.internalName !== undefined ? { internalName: dto.internalName.trim() || null } : {}),
           ...(dto.objectives !== undefined ? { objectives: jsonInput(dto.objectives) } : {}),
-          ...(dto.skills !== undefined ? { skills: dto.skills.map((skill) => skill.trim()) } : {}),
+          ...(skillNames !== undefined ? { skills: skillNames } : {}),
           ...(dto.ageMin !== undefined ? { ageMin: dto.ageMin } : {}),
           ...(dto.ageMax !== undefined ? { ageMax: dto.ageMax } : {}),
           ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
@@ -609,6 +613,13 @@ export class AdminService {
       if (!quest) throw new NotFoundException('Quest not found.');
       if (quest.category.status !== 'PUBLISHED') {
         throw new ConflictException('The quest category must be published first.');
+      }
+      const readiness = await this.checkPublishReadiness(version, tx);
+      if (readiness.errors.length) {
+        throw new ConflictException({
+          message: 'The approved quest version no longer satisfies publication readiness.',
+          errors: readiness.errors,
+        });
       }
 
       const updatedVersion = await tx.questVersion.update({
