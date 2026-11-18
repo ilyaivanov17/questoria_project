@@ -38,6 +38,64 @@ function makeTransactionService(tx: unknown): AdminService {
   return new AdminService(prisma);
 }
 
+function makePublishableApprovedVersion() {
+  return {
+    id: 'version-1',
+    questId: 'quest-1',
+    versionNo: 3,
+    status: 'APPROVED',
+    authorId: 'author-1',
+    approvedAt: new Date('2026-01-01T00:00:00.000Z'),
+    approvedById: 'reviewer-1',
+    title: 'Foundations of number patterns',
+    summary: 'A practical introduction to recognizing and applying number patterns.',
+    description: 'Explore repeating number patterns, identify relationships, and apply each rule to new examples.',
+    objectives: ['Understand Number Patterns', 'Apply Number Patterns to new examples'],
+    skills: ['Number Patterns'],
+    ageMin: 14,
+    ageMax: 99,
+    locale: 'ru',
+    difficulty: 'Начальный',
+    durationMin: 10,
+    seo: {
+      title: 'Number patterns quest',
+      description: 'Learn to recognize and apply number patterns in short interactive puzzles.',
+    },
+    coverUrl: 'https://example.test/number-patterns.png',
+    coverAlt: 'Number patterns illustration',
+    coverLicenseSource: 'https://example.test/license',
+    quest: { category: { status: 'PUBLISHED' } },
+    levels: [{
+      orderNo: 1,
+      title: 'Find the rule',
+      intro: 'Look for the relationship between neighboring numbers.',
+      puzzles: [
+        {
+          orderNo: 1,
+          type: 'single_choice',
+          publicPayload: { options: [{ id: 'double', label: 'Double the number' }] },
+          solutionPrivate: { correctOptionId: 'double', correctFeedback: 'Correct: the number doubles.' },
+          hints: [{ body: 'Compare each number with the next one.' }],
+        },
+        {
+          orderNo: 2,
+          type: 'numeric_input',
+          publicPayload: { prompt: 'What comes after 32?' },
+          solutionPrivate: { correctValue: 64, correctFeedback: 'Correct: 32 doubled is 64.' },
+          hints: [{ body: 'Multiply 32 by two.' }],
+        },
+        {
+          orderNo: 3,
+          type: 'single_choice',
+          publicPayload: { options: [{ id: 'even', label: 'All values are even' }] },
+          solutionPrivate: { correctOptionId: 'even', correctFeedback: 'Correct: every value is even.' },
+          hints: [{ body: 'Check whether each value is divisible by two.' }],
+        },
+      ],
+    }],
+  };
+}
+
 test('approval is a compare-and-set transition from REVIEW and writes one audit entry', async () => {
   let transitionQuery: Record<string, unknown> | undefined;
   let auditCount = 0;
@@ -103,15 +161,7 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
   let transitionQuery: Record<string, unknown> | undefined;
   let questUpdate: Record<string, unknown> | undefined;
   let auditCount = 0;
-  const version = {
-    id: 'version-1',
-    questId: 'quest-1',
-    versionNo: 3,
-    status: 'APPROVED',
-    authorId: 'author-1',
-    approvedAt: new Date('2026-01-01T00:00:00.000Z'),
-    approvedById: 'reviewer-1',
-  };
+  const version = makePublishableApprovedVersion();
   const published = { ...version, status: 'PUBLISHED', publishedById: publisher.userId };
   const tx = {
     questVersion: {
@@ -129,6 +179,10 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
         return { id: 'quest-1', status: 'PUBLISHED' };
       },
     },
+    skill: {
+      findMany: async () => [{ id: 'skill-1', key: 'number-patterns', name: 'Number Patterns' }],
+    },
+    skillPrerequisite: { findMany: async () => [] },
     adminAuditLog: {
       create: async () => { auditCount += 1; return {}; },
     },
@@ -224,15 +278,7 @@ test('draft submission re-checks ownership after locking and re-reading the curr
 test('a stale publication is rejected without changing quest status or writing audit', async () => {
   let questUpdates = 0;
   let auditCount = 0;
-  const version = {
-    id: 'version-1',
-    questId: 'quest-1',
-    versionNo: 3,
-    status: 'APPROVED',
-    authorId: 'author-1',
-    approvedAt: new Date('2026-01-01T00:00:00.000Z'),
-    approvedById: 'reviewer-1',
-  };
+  const version = makePublishableApprovedVersion();
   const tx = {
     questVersion: {
       findFirst: async () => version,
@@ -243,6 +289,10 @@ test('a stale publication is rejected without changing quest status or writing a
       findUnique: async () => ({ id: 'quest-1', category: { status: 'PUBLISHED' } }),
       update: async () => { questUpdates += 1; return {}; },
     },
+    skill: {
+      findMany: async () => [{ id: 'skill-1', key: 'number-patterns', name: 'Number Patterns' }],
+    },
+    skillPrerequisite: { findMany: async () => [] },
     adminAuditLog: {
       create: async () => { auditCount += 1; return {}; },
     },
