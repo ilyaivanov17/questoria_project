@@ -254,7 +254,7 @@ export const questSeeds: QuestSeed[] = [
     internalName: 'Редакция новостей',
     summary: 'Проверь громкие заголовки, найди первоисточники и подготовь честную новостную заметку.',
     description: 'Ты пришёл на стажировку в редакцию. В ленте появились яркие заголовки, но некоторые сообщения не содержат ссылок на источники. Научись проверять автора, дату, доказательства и контекст. В финале собери короткую заметку, в которой каждый вывод можно подтвердить.',
-    objectives: ['Развить навык «Медиаграмотность» при проверке публикаций.', 'Применять навык «Чтение с пониманием» к заголовкам и первоисточникам.', 'Тренировать навык «Критическое мышление» для выявления манипуляций.', 'Использовать навык «Работа со словами» для точных формулировок.', 'Применять навык «Цифровая грамотность» при работе с онлайн-источниками.'],
+    objectives: ['Развить навык «Медиаграмотность» и навык «Цифровая грамотность» при проверке публикаций.', 'Применять навык «Чтение с пониманием» и навык «Работа со словами» к заголовкам и первоисточникам.', 'Тренировать навык «Критическое мышление» для выявления манипуляций.'],
     skills: ['Медиаграмотность', 'Чтение с пониманием', 'Критическое мышление', 'Работа со словами', 'Цифровая грамотность'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 30,
     seoDescription: 'Квест о проверке новостей, первоисточниках и безопасном поведении в сети.',
@@ -271,7 +271,7 @@ export const questSeeds: QuestSeed[] = [
     internalName: 'Клуб дебатов',
     summary: 'Подготовь убедительную позицию, подкрепи тезис фактами и ответь на сильное возражение.',
     description: 'В дебатном клубе обсуждают, стоит ли школе создать тихую зону для самостоятельной работы. Участники приводят аргументы, но не каждый аргумент связан с тезисом. Построй последовательную позицию, отличай доказательства от эмоций и уважительно отвечай на возражения.',
-    objectives: ['Развить навык «Аргументация» через тезисы и подтверждения.', 'Применять навык «Критическое мышление» при оценке доводов.', 'Использовать навык «Чтение с пониманием» для точного пересказа позиции.'],
+    objectives: ['Развить навык «Аргументация» через тезисы и подтверждения.', 'Применять навык «Критическое мышление» при оценке доводов.', 'Использовать навык «Чтение с пониманием» и навык «Работа со словами» для точного пересказа позиции.'],
     skills: ['Аргументация', 'Критическое мышление', 'Чтение с пониманием', 'Работа со словами'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 30,
     seoDescription: 'Образовательная миссия о построении аргументов, доказательствах и уважительной дискуссии.',
@@ -339,8 +339,8 @@ export const questSeeds: QuestSeed[] = [
     internalName: 'Лаборатория паролей',
     summary: 'Защити учебную цифровую лабораторию, оценивая пароли и распознавая рискованные действия.',
     description: 'В цифровой лаборатории хранится проект команды. Несколько сообщений предлагают «быстро войти», но ведут на неизвестные сайты. Научись распознавать слабые пароли, проверять адреса и выбирать безопасный порядок действий. Все примеры вымышленные и не требуют настоящих учётных данных.',
-    objectives: ['Развить навык «Цифровая грамотность» в безопасных сценариях.', 'Применять навык «Критическое мышление» к подозрительным сообщениям.', 'Тренировать навык «Логическое рассуждение» при выборе действий.'],
-    skills: ['Цифровая грамотность', 'Критическое мышление', 'Логическое рассуждение'],
+    objectives: ['Развить навык «Цифровая грамотность» и навык «Медиаграмотность» при проверке ссылок.', 'Применять навык «Критическое мышление» к подозрительным сообщениям.', 'Тренировать навык «Логическое рассуждение» при выборе действий.', 'Использовать навык «Чтение с пониманием» при разборе предупреждений.'],
+    skills: ['Цифровая грамотность', 'Критическое мышление', 'Логическое рассуждение', 'Медиаграмотность', 'Чтение с пониманием'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 25,
     seoDescription: 'Практический квест о цифровой безопасности, паролях и проверке ссылок.',
     levels: [
@@ -356,7 +356,7 @@ export const questSeeds: QuestSeed[] = [
     internalName: 'Робот-курьер',
     summary: 'Составь маршрут робота, проверь последовательность команд и исправь ошибки в алгоритме доставки.',
     description: 'Робот-курьер должен доставить посылки по нескольким адресам в учебном городе. Он понимает только точные команды: повернуть, двигаться, остановиться и проверить адрес. Построй алгоритм, представь маршрут и убедись, что программа не отправляет робота в тупик.',
-    objectives: ['Развить навык «Алгоритмическое мышление» через пошаговые инструкции.', 'Применять навык «Логическое рассуждение» для проверки условий.', 'Тренировать навык «Пространственное мышление» на маршрутах.', 'Использовать навык «Поиск закономерностей» в повторяющихся командах.', 'Развить навык «Геометрическое мышление» при оценке поворотов.'],
+    objectives: ['Развить навык «Алгоритмическое мышление» и навык «Логическое рассуждение» через пошаговые инструкции.', 'Тренировать навык «Пространственное мышление» и навык «Геометрическое мышление» на маршрутах.', 'Использовать навык «Поиск закономерностей» в повторяющихся командах.', 'Применять навык «Цифровая грамотность» при безопасной передаче данных.'],
     skills: ['Алгоритмическое мышление', 'Логическое рассуждение', 'Пространственное мышление', 'Поиск закономерностей', 'Геометрическое мышление', 'Цифровая грамотность'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 30,
     seoDescription: 'Квест по алгоритмам, маршрутам, пространственному мышлению и цифровым системам.',
@@ -424,7 +424,7 @@ export const questSeeds: QuestSeed[] = [
     internalName: 'Карта подземелья',
     summary: 'Пройди лабиринт, читай карту, учитывай повороты и находи кратчайший безопасный путь.',
     description: 'Под старой библиотекой обнаружен учебный лабиринт. Карта показывает коридоры, повороты и закрытые комнаты. Чтобы добраться до выхода, нужно представлять положение персонажа, выполнять команды в нужном порядке и проверять маршрут после каждого поворота.',
-    objectives: ['Развить навык «Пространственное мышление» при чтении карты.', 'Применять навык «Геометрическое мышление» к поворотам и расстояниям.', 'Тренировать навык «Логическое рассуждение» при проверке маршрута.', 'Использовать навык «Алгоритмическое мышление» при построении пути.'],
+    objectives: ['Развить навык «Пространственное мышление» и навык «Геометрическое мышление» при чтении карты.', 'Тренировать навык «Логическое рассуждение» при проверке маршрута.', 'Использовать навык «Алгоритмическое мышление» и навык «Поиск закономерностей» при построении пути.'],
     skills: ['Пространственное мышление', 'Геометрическое мышление', 'Логическое рассуждение', 'Алгоритмическое мышление'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 30,
     seoDescription: 'Пространственный квест о лабиринтах, маршрутах и последовательности команд.',
@@ -624,7 +624,7 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
   const categoryIds = new Map<string, string>();
   for (const category of categorySeeds) {
     const result = await client.query<{ id: string }>(
-      \`INSERT INTO categories
+      `INSERT INTO categories
        (id, slug, locale, title, description, status, sort_order, updated_at)
        VALUES ($1, $2, 'ru', $3, $4, 'PUBLISHED', $5, NOW())
        ON CONFLICT (locale, slug) DO UPDATE SET
@@ -633,7 +633,7 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
          status = 'PUBLISHED',
          sort_order = EXCLUDED.sort_order,
          updated_at = NOW()
-       RETURNING id\`,
+       RETURNING id`,
       [randomUUID(), category.slug, category.title, category.description, categorySeeds.indexOf(category) + 1],
     );
     categoryIds.set(category.slug, result.rows[0].id);
@@ -642,12 +642,12 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
   const skillIds = new Map<string, string>();
   for (const skill of skillSeeds) {
     const result = await client.query<{ id: string }>(
-      \`INSERT INTO skills (id, key, name, description, difficulty)
+      `INSERT INTO skills (id, key, name, description, difficulty)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (key) DO UPDATE SET
          description = COALESCE(skills.description, EXCLUDED.description),
          difficulty = COALESCE(skills.difficulty, EXCLUDED.difficulty)
-       RETURNING id\`,
+       RETURNING id`,
       [randomUUID(), normalizeSkillKey(skill.name), skill.name, skill.description, skill.difficulty],
     );
     skillIds.set(skill.name, result.rows[0].id);
@@ -661,9 +661,9 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
         throw new Error('Skill prerequisite could not be resolved for "' + skill.name + '".');
       }
       await client.query(
-        \`INSERT INTO skill_prerequisites (skill_id, prerequisite_id)
+        `INSERT INTO skill_prerequisites (skill_id, prerequisite_id)
          VALUES ($1, $2)
-         ON CONFLICT (skill_id, prerequisite_id) DO NOTHING\`,
+         ON CONFLICT (skill_id, prerequisite_id) DO NOTHING`,
         [skillId, prerequisiteId],
       );
     }
@@ -673,10 +673,10 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
     const categoryId = categoryIds.get(quest.category);
     if (!categoryId) throw new Error('Category "' + quest.category + '" not found for "' + quest.slug + '".');
     const questResult = await client.query<{ id: string }>(
-      \`INSERT INTO quests (id, category_id, slug, status, updated_at)
+      `INSERT INTO quests (id, category_id, slug, status, updated_at)
        VALUES ($1, $2, $3, 'DRAFT', NOW())
        ON CONFLICT (slug) DO UPDATE SET category_id = EXCLUDED.category_id, updated_at = NOW()
-       RETURNING id\`,
+       RETURNING id`,
       [randomUUID(), categoryId, quest.slug],
     );
     const questId = questResult.rows[0].id;
@@ -685,14 +685,14 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
     const seoJson = JSON.stringify({ title: quest.title, description: quest.seoDescription });
     let versionId: string;
     const insertedVersion = await client.query<{ id: string }>(
-      \`INSERT INTO quest_versions
+      `INSERT INTO quest_versions
        (id, quest_id, version_no, title, summary, objectives, age_min, age_max,
         difficulty, duration_min, locale, seo, status, published_at,
         internal_name, description, skills)
        VALUES ($1, $2, 1, $3, $4, $5::jsonb, $6, $7, $8, $9, 'ru',
         $10::jsonb, 'PUBLISHED', NOW(), $11, $12, $13)
        ON CONFLICT (quest_id, version_no) DO NOTHING
-       RETURNING id\`,
+       RETURNING id`,
       [
         randomUUID(), questId, quest.title, quest.summary, objectivesJson,
         quest.ageMin, quest.ageMax, quest.difficulty, quest.durationMin,
@@ -717,11 +717,11 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
       }
       versionId = existing.id;
       await client.query(
-        \`UPDATE quest_versions SET
+        `UPDATE quest_versions SET
            title = $2, summary = $3, objectives = $4::jsonb, age_min = $5, age_max = $6,
            difficulty = $7, duration_min = $8, seo = $9::jsonb, internal_name = $10,
            description = $11, skills = $12
-         WHERE id = $1 AND status = 'DRAFT'\`,
+         WHERE id = $1 AND status = 'DRAFT'`,
         [
           versionId, quest.title, quest.summary, objectivesJson, quest.ageMin, quest.ageMax,
           quest.difficulty, quest.durationMin, seoJson, quest.internalName, quest.description, skillTags,
@@ -732,17 +732,17 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
     const puzzles = buildQuestPuzzles(quest);
     for (const [levelIndex, level] of quest.levels.entries()) {
       const levelResult = await client.query<{ id: string }>(
-        \`INSERT INTO levels (id, quest_version_id, order_no, title, intro)
+        `INSERT INTO levels (id, quest_version_id, order_no, title, intro)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (quest_version_id, order_no) DO UPDATE SET
            title = EXCLUDED.title, intro = EXCLUDED.intro
-         RETURNING id\`,
+         RETURNING id`,
         [randomUUID(), versionId, levelIndex + 1, level.title, level.intro],
       );
       const levelId = levelResult.rows[0].id;
       for (const puzzle of puzzles.filter((item) => item.orderNo >= levelIndex * 3 + 1 && item.orderNo <= (levelIndex + 1) * 3)) {
         await client.query(
-          \`INSERT INTO puzzles
+          `INSERT INTO puzzles
            (id, level_id, order_no, type, schema_version, public_payload,
             solution_private, max_attempts, max_score)
            VALUES ($1, $2, $3, $4, 1, $5::jsonb, $6::jsonb, 3, 10)
@@ -752,7 +752,7 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
              solution_private = EXCLUDED.solution_private,
              max_attempts = EXCLUDED.max_attempts,
              max_score = EXCLUDED.max_score
-           RETURNING id\`,
+           RETURNING id`,
           [
             randomUUID(), levelId, puzzle.orderNo, puzzle.type,
             JSON.stringify(puzzle.publicPayload), JSON.stringify(puzzle.solutionPrivate),
@@ -760,9 +760,9 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
         ).then(async (puzzleResult) => {
           const puzzleId = puzzleResult.rows[0].id;
           await client.query(
-            \`INSERT INTO hints (id, puzzle_id, order_no, body)
+            `INSERT INTO hints (id, puzzle_id, order_no, body)
              VALUES ($1, $2, 1, $3)
-             ON CONFLICT (puzzle_id, order_no) DO UPDATE SET body = EXCLUDED.body\`,
+             ON CONFLICT (puzzle_id, order_no) DO UPDATE SET body = EXCLUDED.body`,
             [randomUUID(), puzzleId, puzzle.hint],
           );
         });
@@ -770,12 +770,12 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
     }
 
     await client.query(
-      \`UPDATE quest_versions SET status = 'PUBLISHED', published_at = COALESCE(published_at, NOW())
-       WHERE id = $1 AND status = 'DRAFT'\`,
+      `UPDATE quest_versions SET status = 'PUBLISHED', published_at = COALESCE(published_at, NOW())
+       WHERE id = $1 AND status = 'DRAFT'`,
       [versionId],
     );
     await client.query(
-      \`UPDATE quests SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1\`,
+      `UPDATE quests SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1`,
       [questId],
     );
   }
