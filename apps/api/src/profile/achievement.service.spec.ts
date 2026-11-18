@@ -35,7 +35,7 @@ function createService() {
       findMany: async () => [{
         achievementId: 'achievement-1',
         awardedAt,
-        xpAwarded: 10,
+        xpAwarded: 0,
         coinsAwarded: 0,
       }],
     },
