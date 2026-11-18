@@ -425,7 +425,7 @@ export const questSeeds: QuestSeed[] = [
     summary: 'Пройди лабиринт, читай карту, учитывай повороты и находи кратчайший безопасный путь.',
     description: 'Под старой библиотекой обнаружен учебный лабиринт. Карта показывает коридоры, повороты и закрытые комнаты. Чтобы добраться до выхода, нужно представлять положение персонажа, выполнять команды в нужном порядке и проверять маршрут после каждого поворота.',
     objectives: ['Развить навык «Пространственное мышление» и навык «Геометрическое мышление» при чтении карты.', 'Тренировать навык «Логическое рассуждение» при проверке маршрута.', 'Использовать навык «Алгоритмическое мышление» и навык «Поиск закономерностей» при построении пути.'],
-    skills: ['Пространственное мышление', 'Геометрическое мышление', 'Логическое рассуждение', 'Алгоритмическое мышление'],
+    skills: ['Пространственное мышление', 'Геометрическое мышление', 'Логическое рассуждение', 'Алгоритмическое мышление', 'Поиск закономерностей'],
     ageMin: 14, ageMax: 18, difficulty: 'intermediate', durationMin: 30,
     seoDescription: 'Пространственный квест о лабиринтах, маршрутах и последовательности команд.',
     levels: [
@@ -621,6 +621,11 @@ export function validateSeedLibrary(): string[] {
 }
 
 export async function seedLearningLibrary(client: PoolClient): Promise<void> {
+  const diagnostics = validateSeedLibrary();
+  if (diagnostics.length > 0) {
+    throw new Error('Seed content validation failed:\n- ' + diagnostics.join('\n- '));
+  }
+
   const categoryIds = new Map<string, string>();
   for (const category of categorySeeds) {
     const result = await client.query<{ id: string }>(
@@ -778,11 +783,6 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
       `UPDATE quests SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1`,
       [questId],
     );
-  }
-
-  const diagnostics = validateSeedLibrary();
-  if (diagnostics.length > 0) {
-    throw new Error('Seed content validation failed:\n- ' + diagnostics.join('\n- '));
   }
 
   process.stdout.write(
