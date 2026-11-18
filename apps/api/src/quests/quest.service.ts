@@ -409,6 +409,17 @@ export class QuestService {
 
     try {
       const attempt = await this.prisma.$transaction(async (tx) => {
+        // Serialize gameplay submissions for one learner before reading run
+        // state. ReadCommitted gives the request waiting on this lock a fresh
+        // snapshot of the previously committed attempt and reward receipts.
+        const lockedProfile = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "profiles"
+          WHERE "id" = ${profileId}::uuid
+          FOR UPDATE
+        `;
+        if (lockedProfile.length !== 1) throw new NotFoundException('Profile not found.');
+
         const activeRun = await tx.questRun.findFirst({
           where: { id: runId, profileId },
         });
@@ -625,7 +636,7 @@ export class QuestService {
             questFirstCompletion,
           },
         });
-      }, { isolationLevel: 'Serializable' });
+      }, { isolationLevel: 'ReadCommitted' });
 
       const review = !attempt.isCorrect && attempt.attemptsRemaining === 0
         ? buildPuzzleReview(puzzle.type, puzzle.publicPayload, puzzle.solutionPrivate)

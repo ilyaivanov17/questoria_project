@@ -265,7 +265,9 @@ test(
     assert.ok(awards.every((award) => award.coinsAwarded === 0));
 
     // A second player receives the 100 XP achievement from concurrent XP
-    // events. The profile-row lock plus unique receipt allows only one grant.
+    // events. Match the application write contract: serialize events on the
+    // profile row before inserting a ledger event. The trigger reuses this lock
+    // and the unique achievement receipt makes the award permanently one-time.
     const concurrentFixtureId = randomUUID();
     const concurrentUser = await prisma.user.create({
       data: {
@@ -293,19 +295,30 @@ test(
       },
     });
 
-    await Promise.all([1, 2].map((number) =>
-      prisma.walletLedger.create({
-        data: {
-          profileId: concurrentProfileId,
-          currency: 'XP',
-          amount: 1,
-          reason: 'Concurrent achievement threshold event',
-          sourceType: 'TEST',
-          sourceId: concurrentProfileId,
-          idempotencyKey: `achievement-test:${concurrentProfileId}:concurrent-${number}`,
-        },
-      }),
-    ));
+    const createConcurrentXpEvent = (number: number) =>
+      prisma.$transaction(async (tx) => {
+        const lockedProfile = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "profiles"
+          WHERE "id" = ${concurrentProfileId}::uuid
+          FOR UPDATE
+        `;
+        assert.equal(lockedProfile.length, 1, 'the player profile must be locked before writing XP');
+
+        return tx.walletLedger.create({
+          data: {
+            profileId: concurrentProfileId,
+            currency: 'XP',
+            amount: 1,
+            reason: 'Concurrent achievement threshold event',
+            sourceType: 'TEST',
+            sourceId: concurrentProfileId,
+            idempotencyKey: `achievement-test:${concurrentProfileId}:concurrent-${number}`,
+          },
+        });
+      }, { isolationLevel: 'ReadCommitted' });
+
+    await Promise.all([1, 2].map(createConcurrentXpEvent));
 
     const concurrentAward = await prisma.profileAchievement.findMany({
       where: { profileId: concurrentProfileId },
