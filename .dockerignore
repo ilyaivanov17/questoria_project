@@ -1,0 +1,26 @@
+# Never send developer or production secrets into the Docker build context.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local dependencies and build output.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+coverage
+**/coverage
+
+# Source control, editor and local data.
+.git
+.github
+.devcontainer
+.vscode
+backups
+**/*.dump
+**/*.dump.sha256
