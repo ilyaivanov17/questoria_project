@@ -133,6 +133,7 @@ model Profile {
   completions     QuestCompletion[]
   skillProgress   ProfileSkillProgress[]
   learningEvidence LearningEvidence[]
+  achievements      ProfileAchievement[]
 
   @@map("profiles")
 }
@@ -459,6 +460,39 @@ model LearningEvidence {
   @@index([profileId, skillId, occurredAt])
   @@index([skillId, questVersionId])
   @@map("learning_evidence")
+}
+
+model Achievement {
+  id           String               @id @default(uuid()) @db.Uuid
+  code         String               @unique
+  title        String
+  description  String
+  icon         String
+  xpReward     Int                  @default(0) @map("xp_reward")
+  coinsReward  Int                  @default(0) @map("coins_reward")
+  sortOrder    Int                  @default(0) @map("sort_order")
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  profileAwards ProfileAchievement[]
+
+  @@index([active, sortOrder])
+  @@map("achievements")
+}
+
+model ProfileAchievement {
+  id            String      @id @default(uuid()) @db.Uuid
+  profileId     String      @db.Uuid @map("profile_id")
+  achievementId String      @db.Uuid @map("achievement_id")
+  xpAwarded     Int         @default(0) @map("xp_awarded")
+  coinsAwarded  Int         @default(0) @map("coins_awarded")
+  awardedAt     DateTime    @default(now()) @map("awarded_at")
+  profile       Profile     @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  achievement  Achievement @relation(fields: [achievementId], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, achievementId])
+  @@index([profileId, awardedAt])
+  @@map("profile_achievements")
 }
 
 model AdminAuditLog {
