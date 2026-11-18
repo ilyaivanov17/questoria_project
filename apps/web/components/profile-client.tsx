@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ReviewQueuePreview, type ReviewQueueResponse } from './review-queue.js';
-import { SkillProgressSection, type PlayerSkillsResponse } from './skill-progress-section.js';
+import { ReviewQueuePreview, type ReviewQueueResponse } from './review-queue';
+import { SkillProgressSection, type PlayerSkillsResponse } from './skill-progress-section';
 
 interface ProfileData {
   id: string;
