@@ -1176,15 +1176,11 @@ export class AdminService {
     const unknown = labels.filter((_, index) => !byLabel[index]);
     if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
 
-    const objectiveTokens = objectives.map((objective) => new Set(
-      objective.normalize('NFKC').toLocaleLowerCase().match(/[\\p{L}\\p{N}]+/gu) ?? [],
-    ));
     for (const skill of byLabel) {
       if (!skill) continue;
-      const skillTokens = skill.name.normalize('NFKC').toLocaleLowerCase()
-        .match(/[\\p{L}\\p{N}]+/gu) ?? [];
-      const linked = skillTokens.length > 0 && objectiveTokens.some((tokens) => (
-        skillTokens.every((token) => tokens.has(token))
+      const skillPhrase = normalizeSkillKey(skill.name);
+      const linked = objectives.some((objective) => (
+        normalizeSkillKey(objective).includes(skillPhrase)
       ));
       if (!linked) {
         errors.push(`Learning objective must explicitly cover skill "${skill.name}". Mention the skill name in at least one objective.`);
