@@ -157,6 +157,13 @@ test(
     });
     assert.ok(awards.some((award) => award.achievement.code === 'ten-runs'));
 
+    for (const run of runs.slice(10)) {
+      await prisma.questRun.update({
+        where: { id: run.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+    }
+
     // Four distinct levels plus a replay of the first level are still only
     // four unique level IDs; the fifth distinct level crosses the threshold.
     for (const level of levels.slice(0, 4)) {
