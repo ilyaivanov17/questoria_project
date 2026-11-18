@@ -17,6 +17,13 @@ jobs:
   validate:
     name: Validate development infrastructure
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://questoria:questoria_local_only@postgres:5432/questoria?schema=public
+      WEB_ORIGIN: https://questoria.example.invalid
+      NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
+      RESEND_API_KEY: ci-placeholder-not-a-real-secret
+      EMAIL_FROM: "Questoria <no-reply@example.invalid>"
+      MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,30 +52,14 @@ jobs:
         run: bash -n scripts/*.sh
 
       - name: Validate local and production Docker Compose configuration
-        env:
-          DATABASE_URL: postgresql://questoria:ci_only@db.example.invalid:5432/questoria?schema=public
-          WEB_ORIGIN: https://questoria.example.invalid
-          NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
-          RESEND_API_KEY: ci-placeholder-not-a-real-secret
-          EMAIL_FROM: "Questoria <no-reply@example.invalid>"
-          MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         run: |
           docker compose -f infra/docker/docker-compose.yml config --quiet
           docker compose -f infra/docker/docker-compose.production.yml config --quiet
 
-      - name: Run production containers against an isolated CI database
-        env:
-          DATABASE_URL: postgresql://questoria:questoria_local_only@postgres:5432/questoria?schema=public
-          WEB_ORIGIN: https://questoria.example.invalid
-          NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
-          RESEND_API_KEY: ci-placeholder-not-a-real-secret
-          EMAIL_FROM: "Questoria <no-reply@example.invalid>"
-          MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - name: Start isolated CI PostgreSQL
         run: |
           set -euo pipefail
           local_compose=(docker compose -p questoria -f infra/docker/docker-compose.yml)
-          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
-
           "${local_compose[@]}" up -d postgres
           ready=0
           for attempt in $(seq 1 45); do
@@ -83,25 +74,43 @@ jobs:
             exit 1
           fi
 
-          # Migrations are an explicit release action, not an application startup side effect.
+      - name: Apply production migrations to isolated CI database
+        run: |
+          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
           "${production_compose[@]}" --profile release run --rm migrate
 
-          # Start API independently so a failed API healthcheck does not hide its startup logs
-          # behind Compose's web -> api healthy dependency.
+      - name: Build and start production API
+        run: |
+          set -euo pipefail
+          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
           "${production_compose[@]}" up -d --build api
+
           api_id="$("${production_compose[@]}" ps -q api)"
+          if [[ -z "$api_id" ]]; then
+            echo "Production API container was not created." >&2
+            "${production_compose[@]}" logs --no-color --tail=150 api
+            exit 1
+          fi
+
           api_healthy=0
+          api_status=unknown
           for attempt in $(seq 1 60); do
-            api_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$api_id" 2>/dev/null || echo missing)"
-            if [[ "$api_status" == "healthy" ]]; then
+            container_state="$(docker inspect --format '{{.State.Status}}' "$api_id" 2>/dev/null || echo missing)"
+            health_state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$api_id" 2>/dev/null || echo missing)"
+            api_status="$container_state/$health_state"
+            if [[ "$container_state" != "running" ]]; then
+              break
+            fi
+            if [[ "$health_state" == "healthy" ]]; then
               api_healthy=1
               break
             fi
-            if [[ "$api_status" == "unhealthy" || "$api_status" == "exited" || "$api_status" == "dead" || "$api_status" == "missing" ]]; then
+            if [[ "$health_state" == "unhealthy" ]]; then
               break
             fi
             sleep 2
           done
+
           if [[ "$api_healthy" -ne 1 ]]; then
             echo "Production API did not become healthy (container state: $api_status)." >&2
             docker inspect --format '{{json .State}}' "$api_id" || true
@@ -109,7 +118,12 @@ jobs:
             exit 1
           fi
 
-          "${production_compose[@]}" up -d web
+      - name: Start production web and verify same-origin proxy
+        run: |
+          set -euo pipefail
+          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
+          "${production_compose[@]}" up -d --build web
+
           web_ready=0
           for attempt in $(seq 1 60); do
             if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health/ready >/dev/null; then
