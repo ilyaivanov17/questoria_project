@@ -6,9 +6,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 test(
   'PostgreSQL skill evidence: only successful, varied and delayed/transfer evidence can establish mastery',
   { skip: !process.env.DATABASE_URL },
-  async () => {
+  async (t) => {
     const prisma = new PrismaService();
     await prisma.$connect();
+    t.after(async () => prisma.$disconnect());
 
     // Learning evidence is append-only and references immutable published
     // content. These synthetic fixtures intentionally remain in the ephemeral
@@ -259,7 +260,7 @@ test(
     });
     assert.ok(evidence.every((item) => item.evidenceType === 'TRANSFER'));
     assert.equal(evidence.find((item) => item.puzzleAttemptId === failedTransfer.id)?.isCorrect, false);
-    assert.ok(evidence.filter((item) => item.isCorrect).length === 2);
+    assert.equal(evidence.filter((item) => item.isCorrect).length, 2);
 
     const allEvidence = await prisma.learningEvidence.findMany({
       where: { profileId },
@@ -281,6 +282,5 @@ test(
     assert.equal(memoryProgressFinal?.status, 'MASTERED');
     assert.equal(memoryProgressFinal?.successfulAttempts, 5);
 
-    await prisma.$disconnect();
   },
 );
