@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ReviewQueuePreview, type ReviewQueueResponse } from './review-queue.js';
+import { SkillProgressSection, type PlayerSkillsResponse } from './skill-progress-section.js';
 
 interface ProfileData {
   id: string;
@@ -81,6 +83,10 @@ export function ProfileClient() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [skillsData, setSkillsData] = useState<PlayerSkillsResponse | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueueResponse | null>(null);
+  const [skillsError, setSkillsError] = useState('');
+  const [reviewQueueError, setReviewQueueError] = useState('');
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +106,39 @@ export function ProfileClient() {
       setProgress(progressData);
       setWallet(walletData);
       setNickname(profileData.nickname ?? '');
+
+      // Learning data is additive: a temporary failure in the new endpoints
+      // must not hide the core profile, wallet or mission history.
+      const [skillsResult, reviewResult] = await Promise.allSettled([
+        fetchJson('/me/skills') as Promise<PlayerSkillsResponse>,
+        fetchJson('/me/review-queue') as Promise<ReviewQueueResponse>,
+      ]);
+      const unauthorized = [skillsResult, reviewResult].some(
+        (result) => result.status === 'rejected'
+          && result.reason instanceof Error
+          && 'status' in result.reason
+          && result.reason.status === 401,
+      );
+      if (unauthorized) {
+        router.replace('/login?next=%2Fprofile');
+        return;
+      }
+
+      if (skillsResult.status === 'fulfilled') {
+        setSkillsData(skillsResult.value);
+        setSkillsError('');
+      } else {
+        setSkillsData(null);
+        setSkillsError('Не удалось загрузить карту навыков. Обнови профиль чуть позже.');
+      }
+
+      if (reviewResult.status === 'fulfilled') {
+        setReviewQueue(reviewResult.value);
+        setReviewQueueError('');
+      } else {
+        setReviewQueue(null);
+        setReviewQueueError('Очередь повторения временно недоступна.');
+      }
     } catch (loadError) {
       if (loadError instanceof Error && 'status' in loadError && loadError.status === 401) {
         router.replace('/login?next=%2Fprofile');
@@ -248,6 +287,9 @@ export function ProfileClient() {
         <article><strong>{progress.stats.activeRuns}</strong><span>Активных миссий</span></article>
         <article><strong>{progress.stats.completedLevels}</strong><span>Пройденных этапов</span></article>
       </section>
+
+      <ReviewQueuePreview data={reviewQueue} error={reviewQueueError} />
+      <SkillProgressSection data={skillsData} error={skillsError} />
 
       <section className="profile-section achievement-section">
         <div className="profile-section-heading">
