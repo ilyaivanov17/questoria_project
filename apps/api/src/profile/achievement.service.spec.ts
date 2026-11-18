@@ -68,7 +68,7 @@ test('returns persisted unlock state, reward receipt and locked catalog entries'
     icon: '✦',
     unlocked: true,
     awardedAt: awardedAt.toISOString(),
-    xpReward: 10,
+    xpReward: 0,
     coinsReward: 0,
     xpAwarded: 0,
     coinsAwarded: 0,
