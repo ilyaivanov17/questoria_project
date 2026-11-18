@@ -196,19 +196,27 @@ test(
 
     // PostgreSQL may serialize both or abort one with P2034. A serialization
     // loser must be safely retryable with its original attemptId.
-    const receipts = await Promise.all(concurrent.map(async (outcome, index) => {
-      if (outcome.status === 'fulfilled') return outcome.value as AttemptReceipt;
+    const receipts: AttemptReceipt[] = [];
+    for (let index = 0; index < concurrent.length; index += 1) {
+      const outcome = concurrent[index]!;
+      if (outcome.status === 'fulfilled') {
+        receipts.push(outcome.value as AttemptReceipt);
+        continue;
+      }
 
       assert.ok(
         outcome.reason instanceof ConflictException,
         'only the documented retryable 409 conflict is acceptable for the losing transaction',
       );
       const submission = submissions[index]!;
-      return await service.submitAttempt(profileId!, submission.runId, puzzleId, {
+      // Retry serially: if both initial snapshots were invalidated, the
+      // first retry becomes the winner and the second observes its receipt.
+      const retried = await service.submitAttempt(profileId!, submission.runId, puzzleId, {
         attemptId: submission.attemptId,
         answer: { optionId: 'correct' },
-      }) as AttemptReceipt;
-    }));
+      });
+      receipts.push(retried as AttemptReceipt);
+    }
 
     assert.equal(receipts.length, 2);
     assert.ok(receipts.every((receipt) => receipt.result === 'correct'));
