@@ -189,10 +189,21 @@ export class QuestService {
 
     if (!run) throw new NotFoundException('Quest run not found.');
 
+    const puzzles = run.questVersion.levels.flatMap((level) =>
+      level.puzzles.map((puzzle) => ({ level, puzzle })),
+    );
+    const resolvedPuzzleIds = getResolvedPuzzleIds(
+      puzzles.map(({ puzzle }) => ({ id: puzzle.id, maxAttempts: puzzle.maxAttempts })),
+      run.attempts,
+    );
+
     // Older releases marked a run ABANDONED as soon as one puzzle exhausted
-    // its attempts. Such runs are resumable: the new state machine treats that
-    // puzzle as reviewed and advances to the next unresolved puzzle.
-    if (run.status === 'ABANDONED') {
+    // its attempts. Resume only when there is still an unresolved puzzle.
+    // A legacy run whose every puzzle is already resolved must remain terminal;
+    // reopening it would leave an IN_PROGRESS run with no current puzzle and
+    // prevent the player from starting a fresh run.
+    const hasUnresolvedPuzzles = resolvedPuzzleIds.size < puzzles.length;
+    if (run.status === 'ABANDONED' && hasUnresolvedPuzzles) {
       const reopenedAt = new Date();
       const reopened = await this.prisma.questRun.updateMany({
         where: { id: run.id, profileId, status: 'ABANDONED' },
@@ -215,15 +226,8 @@ export class QuestService {
       }
     }
 
-    const puzzles = run.questVersion.levels.flatMap((level) =>
-      level.puzzles.map((puzzle) => ({ level, puzzle })),
-    );
     const completedPuzzleIds = new Set(
       run.attempts.filter((attempt) => attempt.isCorrect).map((attempt) => attempt.puzzleId),
-    );
-    const resolvedPuzzleIds = getResolvedPuzzleIds(
-      puzzles.map(({ puzzle }) => ({ id: puzzle.id, maxAttempts: puzzle.maxAttempts })),
-      run.attempts,
     );
 
     const current = run.status === 'IN_PROGRESS'
