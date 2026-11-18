@@ -142,23 +142,25 @@ export class QuestService {
 
     if (!version) throw new NotFoundException('Quest not found.');
 
-    const existing = await this.prisma.questRun.findFirst({
-      where: {
-        profileId,
-        questVersionId: version.id,
-        status: 'IN_PROGRESS',
-      },
-      orderBy: { startedAt: 'desc' },
-    });
+    const run = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.questRun.findFirst({
+        where: {
+          profileId,
+          questVersionId: version.id,
+          status: 'IN_PROGRESS',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
 
-    // Do not strand a player who already started this quest if the CMS later
-    // adds prerequisites. Gate only creation of a new run.
-    if (existing) return this.getRun(profileId, existing.id);
+      // Do not strand a player who already started this quest if the CMS later
+      // adds prerequisites. Gate only creation of a new run.
+      if (existing) return existing;
 
-    await this.assertSkillPrerequisites(profileId, version.skills);
+      await this.assertSkillPrerequisites(tx, profileId, version.skills);
 
-    const run = await this.prisma.questRun.create({
-      data: { profileId, questVersionId: version.id },
+      return tx.questRun.create({
+        data: { profileId, questVersionId: version.id },
+      });
     });
 
     return this.getRun(profileId, run.id);
@@ -575,13 +577,24 @@ export class QuestService {
     }
   }
 
-  private async assertSkillPrerequisites(profileId: string, skillTags: string[]): Promise<void> {
+  private async assertSkillPrerequisites(
+    tx: Prisma.TransactionClient,
+    profileId: string,
+    skillTags: string[],
+  ): Promise<void> {
     const tags = [...new Set(skillTags.map((tag) => tag.trim()).filter(Boolean))];
     if (tags.length === 0) return;
 
-    // Read the catalog graph and this player's mastery from one consistent
-    // snapshot so a check cannot mix different versions of the prerequisite graph.
-    const skills = await this.prisma.$transaction((tx) => tx.skill.findMany({
+    // CMS graph mutations lock the same rows FOR UPDATE in this stable order.
+    // Holding shared locks until the run is created closes the check/create race.
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "skills"
+      ORDER BY "id"
+      FOR SHARE
+    `;
+
+    const skills = await tx.skill.findMany({
       orderBy: { id: 'asc' },
       select: {
         id: true,
@@ -594,7 +607,7 @@ export class QuestService {
           take: 1,
         },
       },
-    }), { isolationLevel: 'RepeatableRead' });
+    });
 
     const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
     const skillsById = new Map(skills.map((skill) => [skill.id, skill]));
