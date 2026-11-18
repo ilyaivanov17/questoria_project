@@ -17,7 +17,7 @@ test('learning analytics aggregates evidence, mastery and task quality signals b
     },
     learningEvidence: {
       groupBy: async () => [
-        { skillId: 'skill-1', taskType: 'numeric_input', isCorrect: true, _count: { _all: 8 } },
+        { skillId: 'skill-1', taskType: 'numeric_input', evidenceType: 'INITIAL', isCorrect: true, _count: { _all: 8 } },
         { skillId: 'skill-1', taskType: 'numeric_input', isCorrect: false, _count: { _all: 4 } },
         { skillId: 'skill-1', taskType: 'ordering', isCorrect: true, _count: { _all: 2 } },
       ],
@@ -59,7 +59,7 @@ test('learning analytics flags insufficient sample size and low task diversity',
     skill: { findMany: async () => [{ id: 'skill-1', key: 'logic', name: 'Логика' }] },
     learningEvidence: {
       groupBy: async () => [
-        { skillId: 'skill-1', taskType: 'single_choice', isCorrect: true, _count: { _all: 4 } },
+        { skillId: 'skill-1', taskType: 'single_choice', evidenceType: 'INITIAL', isCorrect: true, _count: { _all: 4 } },
       ],
     },
     profileSkillProgress: { groupBy: async () => [] },
