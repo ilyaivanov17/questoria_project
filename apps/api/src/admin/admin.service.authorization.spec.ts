@@ -223,3 +223,29 @@ test('AUTHOR can use a published quest as a template but never receives its priv
   assert.equal('solutionPrivate' in puzzle, false);
   assert.equal(JSON.stringify(detail).includes('secret-option'), false);
 });
+
+
+test('reviewer queue exposes author identity while author responses never include it', async () => {
+  const prisma = {
+    quest: {
+      findMany: async (query: Record<string, unknown>) => {
+        const include = query.include as { versions: { select: Record<string, unknown> } };
+        assert.ok(include.versions.select.author);
+        return [{
+          id: 'quest-review',
+          slug: 'review-me',
+          status: 'DRAFT',
+          category: { title: 'Logic', slug: 'logic' },
+          versions: [{
+            id: 'version-1', versionNo: 2, title: 'Review me', status: 'REVIEW',
+            updatedAt: new Date('2026-11-18T10:00:00.000Z'), authorId: 'author-1',
+            author: { emailNormalized: 'author@example.test', profile: { nickname: 'Автор' } },
+          }],
+        }];
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+  const result = await service.listQuests(reviewer) as Array<{ latestVersion: { author: { email: string; nickname: string } } }>;
+  assert.deepEqual(result[0]?.latestVersion.author, { email: 'author@example.test', nickname: 'Автор' });
+});
