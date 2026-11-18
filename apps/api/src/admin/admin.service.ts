@@ -1162,7 +1162,6 @@ export class AdminService {
     }
 
     const labels = version.skills.map((skill) => skill.trim());
-    const skillKeys = labels.map(normalizeSkillKey);
     const catalog = labels.length
       ? await client.skill.findMany({
           select: { id: true, key: true, name: true },
