@@ -231,13 +231,13 @@ test(
     )).length, 4);
     assert.ok(awards.some((award) => award.achievement.code === 'three-quests'));
 
-    // Current achievements above granted 80 XP. A normal 20 XP ledger event
+    // Paid milestones above granted 70 XP. A normal 30 XP ledger event
     // crosses the 100 XP threshold and atomically unlocks hundred-xp.
     await prisma.walletLedger.create({
       data: {
         profileId,
         currency: 'XP',
-        amount: 20,
+        amount: 30,
         reason: 'Achievement integration threshold setup',
         sourceType: 'TEST',
         sourceId: runs[0]!.id,
@@ -256,8 +256,8 @@ test(
       select: { currency: true, amount: true, sourceType: true, idempotencyKey: true },
     });
     const achievementLedger = ledger.filter((entry) => entry.sourceType === 'ACHIEVEMENT');
-    assert.equal(achievementLedger.length, 5);
-    assert.equal(new Set(achievementLedger.map((entry) => entry.idempotencyKey)).size, 5);
+    assert.equal(achievementLedger.length, 4);
+    assert.equal(new Set(achievementLedger.map((entry) => entry.idempotencyKey)).size, 4);
     assert.equal(ledger.filter((entry) => entry.currency === 'XP')
       .reduce((sum, entry) => sum + entry.amount, 0), 110);
     assert.equal(ledger.filter((entry) => entry.currency === 'COIN')
