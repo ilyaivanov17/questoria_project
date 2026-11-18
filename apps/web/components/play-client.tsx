@@ -170,12 +170,14 @@ export function PlayClient({ runId }: { runId: string }) {
   }
 
   function toggleOption(optionId: string) {
+    attemptIdRef.current = null;
     setSelectedOptions((current) => current.includes(optionId)
       ? current.filter((id) => id !== optionId)
       : [...current, optionId]);
   }
 
   function moveItem(index: number, direction: -1 | 1) {
+    attemptIdRef.current = null;
     setOrderedIds((current) => {
       const nextIndex = index + direction;
       if (nextIndex < 0 || nextIndex >= current.length) return current;
@@ -229,6 +231,9 @@ export function PlayClient({ runId }: { runId: string }) {
   if (!run) {
     return (
       <main className="play-page">
+        <Link className="brand game-brand" href="/">
+          <span className="brand-mark">Q</span><span>questoria</span>
+        </Link>
         <section className="game-card">
           <p className="eyebrow">НЕ УДАЛОСЬ ЗАГРУЗИТЬ</p>
           <h1>Миссия пока недоступна</h1>
@@ -264,9 +269,9 @@ export function PlayClient({ runId }: { runId: string }) {
           </div>
           {run.result?.rewards.firstCompletion ? (
             <p className="result-reward-note">Награда за первое прохождение начислена в твой профиль.</p>
-          ) : (
+          ) : run.result ? (
             <p className="small-note">Повторное прохождение не приносит дополнительные монеты и XP за эту версию миссии.</p>
-          )}
+          ) : null}
           <div className="result-actions">
             <button className="button button-primary" disabled={submitting} onClick={restartQuest} type="button">
               {submitting ? 'Готовим…' : 'Пройти ещё раз'}
@@ -323,7 +328,7 @@ export function PlayClient({ runId }: { runId: string }) {
                   <button
                     className={selectedOption === option.id ? 'answer-option selected' : 'answer-option'}
                     key={option.id}
-                    onClick={() => setSelectedOption(option.id)}
+                    onClick={() => { attemptIdRef.current = null; setSelectedOption(option.id); }}
                     aria-pressed={selectedOption === option.id}
                     disabled={submitting}
                     type="button"
@@ -363,7 +368,7 @@ export function PlayClient({ runId }: { runId: string }) {
                   disabled={submitting}
                   value={inputAnswer}
                   placeholder={puzzle.placeholder ?? 'Введи число'}
-                  onChange={(event) => setInputAnswer(event.target.value)}
+                  onChange={(event) => { attemptIdRef.current = null; setInputAnswer(event.target.value); }}
                 />
               </label>
             )}
@@ -379,7 +384,7 @@ export function PlayClient({ runId }: { runId: string }) {
                   disabled={submitting}
                   value={inputAnswer}
                   placeholder={puzzle.placeholder ?? 'Введи ответ'}
-                  onChange={(event) => setInputAnswer(event.target.value)}
+                  onChange={(event) => { attemptIdRef.current = null; setInputAnswer(event.target.value); }}
                 />
               </label>
             )}
