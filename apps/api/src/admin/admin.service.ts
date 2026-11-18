@@ -1145,37 +1145,103 @@ export class AdminService {
 
   private async checkPublishReadiness(
     version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>,
-    client: Pick<Transaction, 'skill'> = this.prisma,
+    client: Pick<Transaction, 'skill' | 'skillPrerequisite'> = this.prisma,
   ) {
     const errors: string[] = [];
     if (!version.title.trim()) errors.push('Title is required.');
     if (version.summary.trim().length < 20) errors.push('Summary must contain at least 20 characters.');
     if (version.description.trim().length < 50) errors.push('Description must contain at least 50 characters.');
-    if (!Array.isArray(version.objectives) || version.objectives.length < 2 || version.objectives.length > 4) {
+    const objectives = Array.isArray(version.objectives)
+      ? version.objectives.filter((value): value is string => typeof value === 'string')
+      : [];
+    if (objectives.length < 2 || objectives.length > 4) {
       errors.push('Provide 2–4 learning objectives.');
     }
     if (version.skills.length < 1) {
       errors.push('Select at least one skill.');
-    } else {
-      const labels = version.skills.map((skill) => skill.trim());
-      const skillKeys = labels.map(normalizeSkillKey);
-      const catalog = await client.skill.findMany({
-        where: {
-          OR: [
-            { key: { in: skillKeys } },
-            { name: { in: labels } },
-          ],
-        },
-        select: { key: true, name: true },
-      });
-      const unknown = labels.filter((label) => {
-        const key = normalizeSkillKey(label);
-        return !catalog.some((skill) => (
-          skill.key === key || skill.name === label || normalizeSkillKey(skill.name) === key
-        ));
-      });
-      if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
     }
+
+    const labels = version.skills.map((skill) => skill.trim());
+    const skillKeys = labels.map(normalizeSkillKey);
+    const catalog = labels.length
+      ? await client.skill.findMany({
+          select: { id: true, key: true, name: true },
+        })
+      : [];
+    const byLabel = labels.map((label) => {
+      const key = normalizeSkillKey(label);
+      return catalog.find((skill) => (
+        skill.key === key || skill.name === label || normalizeSkillKey(skill.name) === key
+      ));
+    });
+    const unknown = labels.filter((_, index) => !byLabel[index]);
+    if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
+
+    const objectiveTokens = objectives.map((objective) => new Set(
+      objective.normalize('NFKC').toLocaleLowerCase().match(/[\\p{L}\\p{N}]+/gu) ?? [],
+    ));
+    for (const skill of byLabel) {
+      if (!skill) continue;
+      const skillTokens = skill.name.normalize('NFKC').toLocaleLowerCase()
+        .match(/[\\p{L}\\p{N}]+/gu) ?? [];
+      const linked = skillTokens.length > 0 && objectiveTokens.some((tokens) => (
+        skillTokens.every((token) => tokens.has(token))
+      ));
+      if (!linked) {
+        errors.push(`Learning objective must explicitly cover skill "${skill.name}". Mention the skill name in at least one objective.`);
+      }
+    }
+
+    const puzzles = version.levels.flatMap((level) => level.puzzles);
+    const taskTypes = new Set(puzzles.map((puzzle) => puzzle.type));
+    for (const skill of byLabel) {
+      if (!skill) continue;
+      if (puzzles.length < 3) {
+        errors.push(`Skill "${skill.name}": at least 3 distinct puzzles are required to collect mastery evidence (found ${puzzles.length}).`);
+      }
+      if (taskTypes.size < 2) {
+        errors.push(`Skill "${skill.name}": at least 2 task types are required to collect diverse mastery evidence (found ${taskTypes.size}).`);
+      }
+    }
+
+    if (byLabel.some(Boolean)) {
+      const edges = await client.skillPrerequisite.findMany({
+        select: { skillId: true, prerequisiteId: true },
+      });
+      const skillIds = new Set(catalog.map((skill) => skill.id));
+      const prerequisitesBySkill = new Map<string, string[]>();
+      for (const edge of edges) {
+        if (!skillIds.has(edge.skillId) || !skillIds.has(edge.prerequisiteId)) {
+          errors.push('Skill prerequisite graph contains a reference to a missing catalog skill.');
+          continue;
+        }
+        const list = prerequisitesBySkill.get(edge.skillId) ?? [];
+        list.push(edge.prerequisiteId);
+        prerequisitesBySkill.set(edge.skillId, list);
+      }
+
+      const catalogById = new Map(catalog.map((skill) => [skill.id, skill]));
+      const visited = new Set<string>();
+      const active = new Set<string>();
+      const visit = (skillId: string): void => {
+        if (active.has(skillId)) {
+          const skill = catalogById.get(skillId);
+          errors.push(`Skill prerequisite chain contains a cycle at "${skill?.name ?? skillId}".`);
+          return;
+        }
+        if (visited.has(skillId)) return;
+        active.add(skillId);
+        for (const prerequisiteId of prerequisitesBySkill.get(skillId) ?? []) {
+          visit(prerequisiteId);
+        }
+        active.delete(skillId);
+        visited.add(skillId);
+      };
+      for (const skill of byLabel) {
+        if (skill) visit(skill.id);
+      }
+    }
+
     if (version.ageMin < 14 || version.ageMin > version.ageMax) errors.push('Age range is invalid.');
     if (!version.locale || !version.difficulty || version.durationMin < 1) errors.push('Locale, difficulty and duration are required.');
     const seo = version.seo && typeof version.seo === 'object' && !Array.isArray(version.seo)
