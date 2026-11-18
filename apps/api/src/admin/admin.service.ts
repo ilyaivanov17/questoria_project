@@ -28,6 +28,12 @@ function normalizeSkillKey(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '-');
 }
 
+function normalizeSkillText(value: string): string {
+  return value.normalize('NFKC').toLowerCase().trim()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function puzzleAnswerForDefinition(type: string, solution: Record<string, unknown>): Record<string, unknown> {
   switch (type) {
     case 'single_choice': return { optionId: solution.correctOptionId };
@@ -1178,10 +1184,11 @@ export class AdminService {
 
     for (const skill of byLabel) {
       if (!skill) continue;
-      const skillPhrase = normalizeSkillKey(skill.name);
-      const linked = objectives.some((objective) => (
-        normalizeSkillKey(objective).includes(skillPhrase)
-      ));
+      const skillPhrase = normalizeSkillText(skill.name);
+      const linked = objectives.some((objective) => {
+        const objectiveText = `-${normalizeSkillText(objective)}-`;
+        return objectiveText.includes(`-${skillPhrase}-`);
+      });
       if (!linked) {
         errors.push(`Learning objective must explicitly cover skill "${skill.name}". Mention the skill name in at least one objective.`);
       }
