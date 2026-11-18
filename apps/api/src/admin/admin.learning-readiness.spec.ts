@@ -55,7 +55,7 @@ function readinessVersion(overrides: Record<string, unknown> = {}) {
 function makeReadiness() {
   const prisma = {
     skill: { findMany: async () => [skill] },
-    skillPrerequisite: { findMany: async () => edges },
+    skillPrerequisite: { findMany: async () => [] },
   } as unknown as PrismaService;
   const service = new AdminService(prisma);
   return (service as unknown as {
