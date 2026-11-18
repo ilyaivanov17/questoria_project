@@ -282,6 +282,18 @@ export class AdminService {
       });
       if (!current) throw new NotFoundException('Skill not found.');
 
+      if (dto.name !== undefined && dto.name.trim() !== current.name) {
+        const referenced = await tx.questVersion.findFirst({
+          where: { skills: { has: current.name } },
+          select: { id: true },
+        });
+        if (referenced) {
+          throw new ConflictException(
+            'A skill name cannot change after quest versions reference it. Keep the stable label or create a new skill.',
+          );
+        }
+      }
+
       if (dto.prerequisiteIds !== undefined) {
         await this.assertSkillPrerequisites(tx, id, dto.prerequisiteIds);
         await tx.skillPrerequisite.deleteMany({ where: { skillId: id } });
@@ -1136,13 +1148,23 @@ export class AdminService {
     if (version.skills.length < 1) {
       errors.push('Select at least one skill.');
     } else {
-      const skillKeys = version.skills.map(normalizeSkillKey);
+      const labels = version.skills.map((skill) => skill.trim());
+      const skillKeys = labels.map(normalizeSkillKey);
       const catalog = await client.skill.findMany({
-        where: { key: { in: skillKeys } },
-        select: { key: true },
+        where: {
+          OR: [
+            { key: { in: skillKeys } },
+            { name: { in: labels } },
+          ],
+        },
+        select: { key: true, name: true },
       });
-      const knownKeys = new Set(catalog.map((skill) => skill.key));
-      const unknown = [...new Set(skillKeys.filter((key) => !knownKeys.has(key)))];
+      const unknown = labels.filter((label) => {
+        const key = normalizeSkillKey(label);
+        return !catalog.some((skill) => (
+          skill.key === key || skill.name === label || normalizeSkillKey(skill.name) === key
+        ));
+      });
       if (unknown.length) errors.push(`Unknown skills in this quest: ${unknown.join(', ')}.`);
     }
     if (version.ageMin < 14 || version.ageMin > version.ageMax) errors.push('Age range is invalid.');
