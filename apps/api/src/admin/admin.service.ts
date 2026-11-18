@@ -252,6 +252,24 @@ export class AdminService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const lockedVersion = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "quest_versions"
+        WHERE "id" = ${version.id}::uuid
+          AND "status" = 'DRAFT'
+        FOR UPDATE
+      `;
+      if (lockedVersion.length !== 1) {
+        throw new ConflictException('The draft is no longer editable. Reload the quest and try again.');
+      }
+      const currentDraft = await this.getLatestDraftVersion(id, tx);
+      if (currentDraft.id !== version.id) {
+        throw new ConflictException('The current draft changed. Reload the quest and try again.');
+      }
+      if ((dto.ageMin ?? currentDraft.ageMin) > (dto.ageMax ?? currentDraft.ageMax)) {
+        throw new BadRequestException('Minimum age cannot exceed maximum age.');
+      }
+
       const updatedQuest = await tx.quest.update({
         where: { id },
         data: {
@@ -374,17 +392,40 @@ export class AdminService {
   }
 
   async submitForReview(user: AuthenticatedUser, id: string): Promise<object> {
-    const version = await this.getLatestDraftVersion(id);
-    const readiness = await this.checkPublishReadiness(version);
-    if (readiness.errors.length) {
-      throw new BadRequestException({ message: 'Quest is not ready for review.', errors: readiness.errors });
-    }
-
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.questVersion.update({
-        where: { id: version.id },
+      let version = await this.getLatestDraftVersion(id, tx);
+      const lockedVersion = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "quest_versions"
+        WHERE "id" = ${version.id}::uuid
+          AND "status" = 'DRAFT'
+        FOR UPDATE
+      `;
+      if (lockedVersion.length !== 1) {
+        throw new ConflictException('The draft is no longer available for review. Reload the quest and try again.');
+      }
+
+      // Re-read after obtaining the row lock so validation uses the content
+      // that will actually transition to REVIEW.
+      version = await this.getLatestDraftVersion(id, tx);
+      if (version.id !== lockedVersion[0]!.id) {
+        throw new ConflictException('The current draft changed. Reload the quest and try again.');
+      }
+      const readiness = await this.checkPublishReadiness(version);
+      if (readiness.errors.length) {
+        throw new BadRequestException({ message: 'Quest is not ready for review.', errors: readiness.errors });
+      }
+
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'DRAFT' },
         data: { status: 'REVIEW', reviewerId: null, approvedAt: null, approvedById: null },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('The draft is no longer available for review. Reload the quest and try again.');
+      }
+      const updated = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updated) throw new ConflictException('The submitted version could not be reloaded.');
+
       await this.audit(tx, user.userId, 'quest.submitted_for_review', 'QUEST', id, version, {
         versionId: updated.id, versionNo: updated.versionNo, status: updated.status,
       });
@@ -402,8 +443,8 @@ export class AdminService {
       if (version.authorId && version.authorId === user.userId) {
         throw new ForbiddenException('Authors cannot approve their own content.');
       }
-      const updated = await tx.questVersion.update({
-        where: { id: version.id },
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'REVIEW' },
         data: {
           status: 'APPROVED',
           reviewerId: user.userId,
@@ -411,6 +452,12 @@ export class AdminService {
           approvedAt: new Date(),
         },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('This quest version has already been reviewed. Refresh the editorial queue.');
+      }
+      const updated = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updated) throw new ConflictException('The approved quest version could not be reloaded.');
+
       await this.audit(tx, user.userId, 'quest.approved', 'QUEST', id, {
         versionId: version.id, status: version.status,
       }, { versionId: updated.id, status: updated.status, reviewerId: user.userId });
@@ -440,14 +487,19 @@ export class AdminService {
         throw new ConflictException('The quest category must be published first.');
       }
 
-      const updatedVersion = await tx.questVersion.update({
-        where: { id: version.id },
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'APPROVED' },
         data: {
           status: 'PUBLISHED',
           publishedAt: new Date(),
           publishedById: user.userId,
         },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('This quest version has already been published. Refresh the editorial queue.');
+      }
+      const updatedVersion = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updatedVersion) throw new ConflictException('The published quest version could not be reloaded.');
       await tx.quest.update({ where: { id }, data: { status: 'PUBLISHED' } });
       await this.audit(tx, user.userId, 'quest.published', 'QUEST', id, {
         versionId: version.id, status: version.status,
@@ -922,8 +974,11 @@ export class AdminService {
     }
   }
 
-  private async getLatestDraftVersion(questId: string) {
-    const version = await this.prisma.questVersion.findFirst({
+  private async getLatestDraftVersion(
+    questId: string,
+    client: Pick<Prisma.TransactionClient, 'questVersion'> = this.prisma,
+  ) {
+    const version = await client.questVersion.findFirst({
       where: { questId, status: 'DRAFT' },
       orderBy: { versionNo: 'desc' },
       include: {
