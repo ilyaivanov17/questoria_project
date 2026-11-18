@@ -113,6 +113,7 @@ export class CreateQuestDto {
   @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsString({ each: true })
+  @Length(2, 120, { each: true })
   skills!: string[];
 
   @IsInt()
@@ -200,6 +201,7 @@ export class UpdateQuestDto {
   @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsString({ each: true })
+  @Length(2, 120, { each: true })
   skills?: string[];
 
   @IsOptional()
