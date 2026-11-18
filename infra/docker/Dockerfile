@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV COREPACK_HOME=/pnpm/corepack
 ENV PATH=${PNPM_HOME}:${PATH}
-RUN corepack enable && corepack prepare pnpm@12.17.0 --activate
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/* \\
+    && corepack enable && corepack prepare pnpm@12.17.0 --activate
 
 # Resolve dependencies from the committed lockfile before copying application sources.
 FROM base AS dependencies
@@ -23,7 +24,7 @@ ENV DATABASE_URL=postgresql://questoria:build_only@127.0.0.1:5432/questoria?sche
 ARG API_INTERNAL_URL=http://api:4000
 ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm db:generate && pnpm build
+RUN pnpm db:generate && pnpm build && test -f apps/api/dist/generated/prisma/client.js
 
 # Production dependency sets keep devDependencies out of the web and API runtime images.
 FROM base AS api-production-dependencies
@@ -49,7 +50,6 @@ COPY --from=api-production-dependencies --chown=node:node /app/apps/api/node_mod
 COPY --from=api-production-dependencies --chown=node:node /app/packages/contracts ./packages/contracts
 COPY --from=api-production-dependencies --chown=node:node /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
-COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 USER node
 EXPOSE 4000
 CMD ["node", "apps/api/dist/main.js"]
