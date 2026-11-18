@@ -172,11 +172,22 @@ export class SkillService {
             },
           },
         }),
-        tx.learningEvidence.groupBy({
-          by: ['skillId'],
-          where: { profileId, isCorrect: true },
-          _max: { occurredAt: true },
-        }),
+        tx.$queryRaw<Array<{
+          skillId: string;
+          occurredAt: Date;
+          questSlug: string;
+        }>>`
+          SELECT DISTINCT ON (le."skill_id")
+            le."skill_id" AS "skillId",
+            le."occurred_at" AS "occurredAt",
+            q."slug" AS "questSlug"
+          FROM "learning_evidence" le
+          INNER JOIN "quest_versions" qv ON qv."id" = le."quest_version_id"
+          INNER JOIN "quests" q ON q."id" = qv."quest_id"
+          WHERE le."profile_id" = ${profileId}::uuid
+            AND le."is_correct" = TRUE
+          ORDER BY le."skill_id", le."occurred_at" DESC, le."id" DESC
+        `,
         tx.learningEvidence.groupBy({
           by: ['skillId'],
           where: { profileId, isCorrect: true, evidenceType: 'DELAYED_CHECK' },
@@ -215,7 +226,10 @@ export class SkillService {
     }
 
     const latestSuccessBySkill = new Map(
-      snapshot.latestSuccessfulEvidence.map((row) => [row.skillId, row._max.occurredAt]),
+      snapshot.latestSuccessfulEvidence.map((row) => [row.skillId, row.occurredAt]),
+    );
+    const latestSuccessQuestBySkill = new Map(
+      snapshot.latestSuccessfulEvidence.map((row) => [row.skillId, row.questSlug]),
     );
     const delayedCheckCountBySkill = new Map(
       snapshot.delayedChecks.map((row) => [row.skillId, row._count._all]),
@@ -264,6 +278,7 @@ export class SkillService {
       );
       if (schedule.dueAt.getTime() > horizonMs) continue;
 
+      const lastSuccessfulQuestSlug = latestSuccessQuestBySkill.get(definition.id);
       const recommendedQuests = snapshot.publishedVersions
         .filter((version) => {
           const targetSkills = resolveQuestSkills(version.skills);
@@ -272,6 +287,15 @@ export class SkillService {
             && targetSkills.includes(definition.id)
             && targetSkills.every((skillId) => prerequisitesAreMastered(skillId)),
           );
+        })
+        // Prefer the same root quest as the latest successful evidence. A
+        // correct answer there after the interval is classified as DELAYED_CHECK;
+        // another root quest is intentionally classified as TRANSFER.
+        .sort((left, right) => {
+          const leftPriority = left.quest.slug === lastSuccessfulQuestSlug ? 0 : 1;
+          const rightPriority = right.quest.slug === lastSuccessfulQuestSlug ? 0 : 1;
+          return leftPriority - rightPriority
+            || left.title.localeCompare(right.title, 'ru');
         })
         .reduce<PlayerSkillReviewQueueResponse['items'][number]['recommendedQuests']>((result, version) => {
           if (result.some((quest) => quest.slug === version.quest.slug)) return result;
