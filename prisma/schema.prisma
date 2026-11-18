@@ -44,6 +44,20 @@ enum WalletCurrency {
   COIN
 }
 
+enum SkillMasteryStatus {
+  PRACTICING
+  DEVELOPING
+  PROFICIENT
+  MASTERED
+}
+
+enum LearningEvidenceType {
+  INITIAL
+  PRACTICE
+  DELAYED_CHECK
+  TRANSFER
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   emailNormalized String     @unique @map("email_normalized")
@@ -117,6 +131,8 @@ model Profile {
   puzzleAttempts PuzzleAttempt[]
   walletEntries   WalletLedger[]
   completions     QuestCompletion[]
+  skillProgress   ProfileSkillProgress[]
+  learningEvidence LearningEvidence[]
 
   @@map("profiles")
 }
@@ -219,6 +235,7 @@ model QuestVersion {
   levels      Level[]
   runs        QuestRun[]
   completions QuestCompletion[]
+  learningEvidence LearningEvidence[]
   createdAt   DateTime           @default(now()) @map("created_at")
 
   @@unique([questId, versionNo])
@@ -253,6 +270,7 @@ model Puzzle {
   level             Level           @relation(fields: [levelId], references: [id], onDelete: Restrict)
   hints             Hint[]
   attempts          PuzzleAttempt[]
+  learningEvidence LearningEvidence[]
 
   @@unique([levelId, orderNo])
   @@map("puzzles")
@@ -282,6 +300,7 @@ model QuestRun {
   attempts        PuzzleAttempt[]
   levelProgress   LevelProgress[]
   completion      QuestCompletion?
+  learningEvidence LearningEvidence[]
 
   @@index([profileId, status])
   @@index([questVersionId])
@@ -307,6 +326,7 @@ model PuzzleAttempt {
   profile           Profile  @relation(fields: [profileId], references: [id], onDelete: Restrict)
   questRun          QuestRun @relation(fields: [questRunId], references: [id], onDelete: Restrict)
   puzzle            Puzzle   @relation(fields: [puzzleId], references: [id], onDelete: Restrict)
+  learningEvidence  LearningEvidence[]
 
   @@unique([profileId, attemptKey])
   @@index([questRunId, puzzleId, createdAt])
@@ -362,6 +382,83 @@ model WalletLedger {
   @@index([profileId, createdAt])
   @@index([sourceType, sourceId])
   @@map("wallet_ledger")
+}
+
+model Skill {
+  id          String                  @id @default(uuid()) @db.Uuid
+  key         String                  @unique
+  name        String
+  description String?
+  difficulty  String?
+  createdAt   DateTime                @default(now()) @map("created_at")
+  progress    ProfileSkillProgress[]
+  evidence    LearningEvidence[]
+  prerequisites SkillPrerequisite[]   @relation("SkillPrerequisiteChild")
+  unlocks       SkillPrerequisite[]   @relation("SkillPrerequisiteParent")
+
+  @@index([name])
+  @@index([difficulty])
+  @@map("skills")
+}
+
+model SkillPrerequisite {
+  skillId        String @db.Uuid @map("skill_id")
+  prerequisiteId String @db.Uuid @map("prerequisite_id")
+  skill          Skill  @relation("SkillPrerequisiteChild", fields: [skillId], references: [id], onDelete: Restrict)
+  prerequisite   Skill  @relation("SkillPrerequisiteParent", fields: [prerequisiteId], references: [id], onDelete: Restrict)
+
+  @@id([skillId, prerequisiteId])
+  @@index([prerequisiteId])
+  @@map("skill_prerequisites")
+}
+
+model ProfileSkillProgress {
+  id                    String             @id @default(uuid()) @db.Uuid
+  profileId             String             @db.Uuid @map("profile_id")
+  skillId               String             @db.Uuid @map("skill_id")
+  status                SkillMasteryStatus @default(PRACTICING)
+  attemptsCount         Int                @default(0) @map("attempts_count")
+  successfulAttempts    Int                @default(0) @map("successful_attempts")
+  distinctPuzzles       Int                @default(0) @map("distinct_puzzles")
+  distinctQuestVersions Int                @default(0) @map("distinct_quest_versions")
+  distinctQuests        Int                @default(0) @map("distinct_quests")
+  distinctRuns          Int                @default(0) @map("distinct_runs")
+  distinctTaskTypes     Int                @default(0) @map("distinct_task_types")
+  firstPracticedAt      DateTime           @default(now()) @map("first_practiced_at")
+  lastPracticedAt       DateTime           @default(now()) @map("last_practiced_at")
+  masteredAt            DateTime?          @map("mastered_at")
+  profile               Profile            @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  skill                 Skill              @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, skillId])
+  @@index([profileId, status])
+  @@map("profile_skill_progress")
+}
+
+model LearningEvidence {
+  id              String               @id @default(uuid()) @db.Uuid
+  profileId       String               @db.Uuid @map("profile_id")
+  skillId         String               @db.Uuid @map("skill_id")
+  questRunId      String               @db.Uuid @map("quest_run_id")
+  questVersionId  String               @db.Uuid @map("quest_version_id")
+  puzzleId        String               @db.Uuid @map("puzzle_id")
+  puzzleAttemptId String               @db.Uuid @map("puzzle_attempt_id")
+  isCorrect       Boolean              @map("is_correct")
+  score           Int                  @default(0)
+  taskType        String               @map("task_type")
+  evidenceType    LearningEvidenceType @default(INITIAL) @map("evidence_type")
+  occurredAt      DateTime             @default(now()) @map("occurred_at")
+  profile         Profile              @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  skill           Skill                @relation(fields: [skillId], references: [id], onDelete: Restrict)
+  questRun        QuestRun             @relation(fields: [questRunId], references: [id], onDelete: Restrict)
+  questVersion    QuestVersion         @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
+  puzzle          Puzzle               @relation(fields: [puzzleId], references: [id], onDelete: Restrict)
+  puzzleAttempt   PuzzleAttempt        @relation(fields: [puzzleAttemptId], references: [id], onDelete: Restrict)
+
+  @@unique([puzzleAttemptId, skillId])
+  @@index([profileId, skillId, occurredAt])
+  @@index([skillId, questVersionId])
+  @@map("learning_evidence")
 }
 
 model AdminAuditLog {

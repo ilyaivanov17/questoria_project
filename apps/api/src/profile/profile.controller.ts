@@ -11,11 +11,15 @@ import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ProfileService } from './profile.service.js';
+import { SkillService } from './skill.service.js';
 
 @Controller('v1/me')
 @UseGuards(AuthGuard)
 export class ProfileController {
-  constructor(private readonly profiles: ProfileService) {}
+  constructor(
+    private readonly profiles: ProfileService,
+    private readonly skills: SkillService,
+  ) {}
 
   @Get('profile')
   getProfile(@Req() request: Request): Promise<object> {
@@ -42,5 +46,11 @@ export class ProfileController {
   getWallet(@Req() request: Request): Promise<object> {
     const user = request.authUser as AuthenticatedUser;
     return this.profiles.getWallet(user.profileId);
+  }
+
+  @Get('skills')
+  getSkills(@Req() request: Request) {
+    const user = request.authUser as AuthenticatedUser;
+    return this.skills.getSkills(user.profileId);
   }
 }
