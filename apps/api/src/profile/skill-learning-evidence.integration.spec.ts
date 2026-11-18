@@ -190,6 +190,7 @@ test(
     assert.equal(memoryProgress?.distinctPuzzles, 3);
     assert.equal(memoryProgress?.distinctTaskTypes, 3);
     assert.equal(memoryProgress?.distinctQuests, 1);
+    assert.equal(memoryProgress?.distinctRuns, 2);
 
     await addAttempt(memory.run.id, memory.puzzles[1]!.id, true);
     memoryProgress = await prisma.profileSkillProgress.findFirst({
@@ -252,6 +253,7 @@ test(
     assert.equal(criticalProgress?.distinctPuzzles, 5);
     assert.equal(criticalProgress?.distinctTaskTypes, 5);
     assert.equal(criticalProgress?.distinctQuests, 2);
+    assert.equal(criticalProgress?.distinctRuns, 2);
     assert.ok(criticalProgress?.masteredAt);
 
     evidence = await prisma.learningEvidence.findMany({
