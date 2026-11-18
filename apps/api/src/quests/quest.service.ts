@@ -142,17 +142,30 @@ export class QuestService {
 
     if (!version) throw new NotFoundException('Quest not found.');
 
-    const existing = await this.prisma.questRun.findFirst({
-      where: {
-        profileId,
-        questVersionId: version.id,
-        status: 'IN_PROGRESS',
-      },
-      orderBy: { startedAt: 'desc' },
-    });
+    // A read-then-create without a lock can create multiple active runs
+    // when the client retries or sends concurrent start requests. Lock the
+    // owning profile row so every start request for this player serializes.
+    const run = await this.prisma.$transaction(async (tx) => {
+      const lockedProfile = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "profiles"
+        WHERE "id" = ${profileId}::uuid
+        FOR UPDATE
+      `;
+      if (lockedProfile.length !== 1) throw new NotFoundException('Profile not found.');
 
-    const run = existing ?? await this.prisma.questRun.create({
-      data: { profileId, questVersionId: version.id },
+      const existing = await tx.questRun.findFirst({
+        where: {
+          profileId,
+          questVersionId: version.id,
+          status: 'IN_PROGRESS',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+
+      return existing ?? tx.questRun.create({
+        data: { profileId, questVersionId: version.id },
+      });
     });
 
     return this.getRun(profileId, run.id);
