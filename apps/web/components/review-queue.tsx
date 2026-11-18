@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -57,7 +59,14 @@ function ReviewItemCard({ item, compact = false }: { item: ReviewQueueItem; comp
           {getSkillStatusLabel(item.skillStatus)}
         </span>
       </div>
+      <p className="review-due-date">{due ? 'Срок повторения' : 'Следующая проверка'} · {formatDate(item.dueAt)}</p>
       <p className="review-last-success">Последний верный ответ · {formatDate(item.lastCorrectAt)}</p>
+      {!compact && !item.recommendedQuests.length && due ? (
+        <p className="review-no-quest">
+          Пока нет опубликованной миссии с доступными prerequisites для этого навыка.
+          <Link href="/quests">Посмотреть каталог →</Link>
+        </p>
+      ) : null}
       {!compact && item.recommendedQuests.length ? (
         <div className="review-recommendations">
           <strong>{due ? 'Подходящие миссии для повторения' : 'Подготовься к следующей проверке'}</strong>
