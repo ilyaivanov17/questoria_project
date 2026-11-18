@@ -44,5 +44,20 @@ jobs:
       - name: Validate shell scripts
         run: bash -n scripts/*.sh
 
-      - name: Validate Docker Compose configuration
-        run: docker compose -f infra/docker/docker-compose.yml config --quiet
+      - name: Validate local and production Docker Compose configuration
+        env:
+          DATABASE_URL: postgresql://questoria:ci_only@db.example.invalid:5432/questoria?schema=public
+          WEB_ORIGIN: https://questoria.example.invalid
+          NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
+          RESEND_API_KEY: ci-placeholder-not-a-real-secret
+          EMAIL_FROM: "Questoria <no-reply@example.invalid>"
+          MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          docker compose -f infra/docker/docker-compose.yml config --quiet
+          docker compose -f infra/docker/docker-compose.production.yml config --quiet
+
+      - name: Build production Docker targets
+        run: |
+          docker build -f infra/docker/Dockerfile --target api -t questoria-api:ci .
+          docker build -f infra/docker/Dockerfile --target web -t questoria-web:ci --build-arg API_INTERNAL_URL=http://api:4000 .
+          docker build -f infra/docker/Dockerfile --target migrate -t questoria-migrate:ci .

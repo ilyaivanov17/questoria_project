@@ -22,6 +22,44 @@ Store all credentials in the hosting provider's secret manager. Never commit rea
 
 Treat a change to MFA_ENCRYPTION_KEY as a key-rotation event: existing encrypted TOTP secrets cannot be decrypted with a different key, so plan an explicit administrator MFA re-enrollment before rotating it.
 
+
+
+## Provider-neutral production containers
+
+The repository provides one Dockerfile with three explicit targets:
+
+- `api`: non-root Node.js runtime for NestJS. Port 4000 is exposed only to the Compose network.
+- `web`: non-root Next.js runtime. Its API rewrite is built with the internal service address `http://api:4000`.
+- `migrate`: a one-shot migration image containing the Prisma CLI. It is not started as part of the normal application `up`.
+
+The production Compose overlay is `infra/docker/docker-compose.production.yml`. It deliberately has **no PostgreSQL service**: set `DATABASE_URL` to the separately provisioned managed database. The web port is bound to loopback by default so an external HTTPS reverse proxy can terminate TLS. The API is not published on a host port.
+
+Build and validate image targets in CI. For an operator-run deployment, supply these runtime values from the hosting secret manager or an environment file outside the repository (never commit it):
+
+- `DATABASE_URL`
+- `WEB_ORIGIN`
+- `NEXT_PUBLIC_SITE_URL`
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `MFA_ENCRYPTION_KEY`
+
+Example operator sequence with a protected environment file:
+
+```bash
+COMPOSE="docker compose --env-file /secure/path/questoria.production.env -f infra/docker/docker-compose.production.yml"
+
+# Apply schema changes as an explicit, reviewed release step.
+$COMPOSE --profile release run --rm migrate
+
+# Build and start the application containers.
+$COMPOSE up -d --build
+$COMPOSE ps
+```
+
+Configure DNS, HTTPS certificates, HSTS, forwarded headers and the reverse proxy separately. Route the public hostname to `127.0.0.1:3000`; do not publish the API port. The Compose file uses internal service networking for API requests. For a remote image registry, set `QUESTORIA_API_IMAGE` and `QUESTORIA_WEB_IMAGE`, build/push the corresponding targets in your release pipeline, and deploy immutable image tags.
+
+The migration command is intentionally separate from `up`. The image contains no real connection string, email key or MFA secret; build-time `DATABASE_URL` is a non-routable placeholder used only by Prisma client generation. This Compose overlay is a deployment recipe, not a deployment: it does not provision a cloud account, database, reverse proxy, domain, certificate, secret manager, monitoring provider or backup policy.
+
 ## Deployment checklist
 
 1. Provision managed PostgreSQL and use its externally reachable connection hostname.
