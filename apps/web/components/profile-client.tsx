@@ -175,6 +175,12 @@ export function ProfileClient() {
   if (!profile || !progress || !wallet) {
     return (
       <main className="profile-page">
+        <header className="topbar profile-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark">Q</span><span>questoria</span>
+          </Link>
+          <Link className="simple-nav-link" href="/quests">К квестам</Link>
+        </header>
         <section className="profile-empty">
           <p className="eyebrow">ПРОФИЛЬ</p>
           <h1>Не удалось открыть профиль</h1>
