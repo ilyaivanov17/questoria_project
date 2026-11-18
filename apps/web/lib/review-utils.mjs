@@ -1,4 +1,4 @@
-export function pluralizeRussianDays(value: number): string {
+export function pluralizeRussianDays(value) {
   const absolute = Math.abs(Math.trunc(value));
   const mod100 = absolute % 100;
   const mod10 = absolute % 10;
@@ -10,14 +10,14 @@ export function pluralizeRussianDays(value: number): string {
   return `${absolute} ${noun}`;
 }
 
-export function getReviewTimingLabel(state: ReviewState, daysOverdue: number): string {
+export function getReviewTimingLabel(state, daysOverdue) {
   if (state === 'upcoming') return 'Скоро понадобится повторение';
   if (daysOverdue <= 0) return 'Пора повторить сегодня';
   return `Просрочено на ${pluralizeRussianDays(daysOverdue)}`;
 }
 
-export function getSkillStatusLabel(status: SkillStatus): string {
-  const labels: Record<SkillStatus, string> = {
+export function getSkillStatusLabel(status) {
+  const labels = {
     not_started: 'Не начат',
     practicing: 'В процессе',
     developing: 'Развивается',
@@ -27,8 +27,8 @@ export function getSkillStatusLabel(status: SkillStatus): string {
   return labels[status] ?? 'В процессе';
 }
 
-export function getEvidenceTypeLabel(kind: EvidenceKind): string {
-  const labels: Record<EvidenceKind, string> = {
+export function getEvidenceTypeLabel(kind) {
+  const labels = {
     initial: 'Первое знакомство',
     practice: 'Практика',
     delayed_check: 'Отложенная проверка',
