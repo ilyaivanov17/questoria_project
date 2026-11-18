@@ -5,7 +5,7 @@ WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV COREPACK_HOME=/pnpm/corepack
 ENV PATH=${PNPM_HOME}:${PATH}
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/* \\
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/* \
     && corepack enable && corepack prepare pnpm@12.17.0 --activate
 
 # Resolve dependencies from the committed lockfile before copying application sources.
