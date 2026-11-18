@@ -139,7 +139,7 @@ export interface AdminLearningAnalytics {
       attempts: number;
       successful: number;
       successRate: number | null;
-      taskTypeCount: number;
+      evidenceTypeCount: number;
       taskTypes: Array<{
         taskType: string;
         attempts: number;
@@ -191,7 +191,7 @@ export interface AdminTaskLearningAnalytics {
       notMastered: { attempts: number; learners: number; successRate: number | null };
       successRateGap: number | null;
     };
-    qualitySignals: Array<'LOW_SAMPLE_SIZE' | 'LOW_SUCCESS_RATE' | 'LOW_MASTERY_SEPARATION'>;
+    qualitySignals: Array<'LOW_SAMPLE_SIZE' | 'LOW_SUCCESS_RATE' | 'LOW_MASTERY_SEPARATION' | 'LOW_EVIDENCE_DIVERSITY'>;
   }>;
   notes: {
     masteryCohorts: string;
