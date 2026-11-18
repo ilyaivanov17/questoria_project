@@ -610,6 +610,15 @@ export class AdminService {
       const version = await tx.questVersion.findFirst({
         where: { questId: id, status: 'APPROVED' },
         orderBy: { versionNo: 'desc' },
+        include: {
+          levels: {
+            orderBy: { orderNo: 'asc' },
+            include: {
+              puzzles: { orderBy: { orderNo: 'asc' }, include: { hints: true } },
+            },
+          },
+          quest: { include: { category: true } },
+        },
       });
       if (!version) throw new ConflictException('Only an approved version can be published.');
       if (!version.approvedAt || !version.approvedById) {
