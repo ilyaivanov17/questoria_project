@@ -126,12 +126,21 @@ export class AdminService {
   async listQuests(user: AuthenticatedUser): Promise<object[]> {
     const authorOnly = !canViewAllQuestVersions(user);
     const quests = await this.prisma.quest.findMany({
-      where: authorOnly ? { versions: { some: { authorId: user.userId } } } : {},
+      where: authorOnly
+        ? {
+          OR: [
+            { status: 'PUBLISHED' },
+            { versions: { some: { authorId: user.userId } } },
+          ],
+        }
+        : {},
       orderBy: { updatedAt: 'desc' },
       include: {
         category: { select: { title: true, slug: true } },
         versions: {
-          where: authorOnly ? { authorId: user.userId } : {},
+          where: authorOnly
+            ? { OR: [{ authorId: user.userId }, { status: 'PUBLISHED' }] }
+            : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           select: { id: true, versionNo: true, title: true, status: true, updatedAt: true },
@@ -152,12 +161,21 @@ export class AdminService {
     const quest = await this.prisma.quest.findFirst({
       where: {
         id,
-        ...(authorOnly ? { versions: { some: { authorId: user.userId } } } : {}),
+        ...(authorOnly
+          ? {
+            OR: [
+              { status: 'PUBLISHED' },
+              { versions: { some: { authorId: user.userId } } },
+            ],
+          }
+          : {}),
       },
       include: {
         category: true,
         versions: {
-          where: authorOnly ? { authorId: user.userId } : {},
+          where: authorOnly
+            ? { OR: [{ authorId: user.userId }, { status: 'PUBLISHED' }] }
+            : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           include: {
@@ -175,6 +193,19 @@ export class AdminService {
       },
     });
     if (!quest) throw new NotFoundException('Quest not found.');
+    const latestVersion = quest.versions[0];
+    if (authorOnly && latestVersion && latestVersion.authorId !== user.userId) {
+      return {
+        ...quest,
+        versions: quest.versions.map((version) => ({
+          ...version,
+          levels: version.levels.map((level) => ({
+            ...level,
+            puzzles: level.puzzles.map(({ solutionPrivate: _solutionPrivate, ...puzzle }) => puzzle),
+          })),
+        })),
+      };
+    }
     return quest;
   }
 
