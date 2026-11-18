@@ -156,6 +156,9 @@ test(
       true,
       new Date(Date.now() - 48 * 60 * 60 * 1000),
     );
+    const independentMemoryRun = await prisma.questRun.create({
+      data: { profileId, questVersionId: memory.version.id },
+    });
 
     let memoryProgress = await prisma.profileSkillProgress.findFirst({
       where: { profileId, skill: { key: 'memory-recall' } },
@@ -166,7 +169,7 @@ test(
     // The next correct answer on the same skill is a delayed check because
     // the last successful evidence is more than 24 hours old.
     const delayedCheck = await addAttempt(
-      memory.run.id,
+      independentMemoryRun.id,
       memory.puzzles[1]!.id,
       true,
     );
