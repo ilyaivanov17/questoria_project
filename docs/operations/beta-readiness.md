@@ -17,7 +17,7 @@ This is an operational gate list, not evidence that production services are alre
 | CI/CD | GitHub Actions runs validation on pushes to `main` and pull requests targeting `main`; it builds, tests, migrates/seeds a CI PostgreSQL instance, runs E2E smoke and verifies local backup/restore. | Keep required checks green and require review. No production deploy job is configured or implied. |
 | Support/privacy | Product documentation identifies unfinished legal/privacy processes. | Approve privacy notice, terms, data-retention/deletion workflow, incident contact, support path and beta participant consent before launch. |
 
-The current repository does not contain a production application Dockerfile/Compose stack or deployment-specific manifests. This change deliberately does not invent a hosting provider, credentials, bucket, DNS zone, or production image pipeline. Deploy the built web and API as separately managed processes/containers using a reviewed hosting design; keep PostgreSQL external and managed.
+The repository includes provider-neutral production targets in `infra/docker/Dockerfile` (`api`, `web`, and one-shot `migrate`) and a Compose overlay in `infra/docker/docker-compose.production.yml`. These provide build and container wiring only: no PostgreSQL server, hosting provider, registry, reverse proxy, domain, certificates, secrets manager or production backup service is provisioned. Keep PostgreSQL external and managed; configure HTTPS termination and secret injection in the chosen hosting environment.
 
 ## Pre-beta release checklist
 
