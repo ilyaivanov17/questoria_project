@@ -75,6 +75,7 @@ type SourceVersion = {
   coverUrl: string | null;
   coverAlt: string | null;
   coverLicenseSource: string | null;
+  reviewFeedback?: string | null;
   levels: SourceLevel[];
 };
 export type CmsQuestDetail = {
@@ -460,6 +461,11 @@ export function QuestEditor({
   return (
     <div className="admin-editor">
       {readOnly && <p className="admin-review-banner">Режим проверки: данные версии доступны только для чтения. Публикация остаётся отдельным действием администратора.</p>}
+      {initialQuest?.versions[0]?.reviewFeedback && <aside className="admin-review-feedback" role="status">
+        <strong>Замечания рецензента</strong>
+        <p>{initialQuest.versions[0].reviewFeedback}</p>
+        <small>Исправь пункты и отправь черновик на повторную проверку.</small>
+      </aside>}
       <form className="admin-form admin-form-grid" onSubmit={submit}>
         <label className="field admin-field-wide">
           <span>Рубрика</span>

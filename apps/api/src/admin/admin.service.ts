@@ -969,7 +969,13 @@ export class AdminService {
 
       const transitioned = await tx.questVersion.updateMany({
         where: { id: version.id, status: 'DRAFT' },
-        data: { status: 'REVIEW', reviewerId: null, approvedAt: null, approvedById: null },
+        data: {
+          status: 'REVIEW',
+          reviewerId: null,
+          reviewFeedback: null,
+          approvedAt: null,
+          approvedById: null,
+        },
       });
       if (transitioned.count !== 1) {
         throw new ConflictException('The draft is no longer available for review. Reload the quest and try again.');
@@ -981,6 +987,60 @@ export class AdminService {
         versionId: updated.id, versionNo: updated.versionNo, status: updated.status,
       });
       return { id, versionId: updated.id, versionNo: updated.versionNo, status: updated.status };
+    });
+  }
+
+  async requestQuestChanges(user: AuthenticatedUser, id: string, feedback: string): Promise<object> {
+    const comment = feedback.trim();
+    if (comment.length < 10 || comment.length > 2000) {
+      throw new BadRequestException('Review feedback must contain between 10 and 2000 characters.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.questVersion.findFirst({
+        where: { questId: id, status: 'REVIEW' },
+        orderBy: { versionNo: 'desc' },
+      });
+      if (!version) throw new ConflictException('A quest in REVIEW state was not found.');
+      if (!version.authorId) {
+        throw new ConflictException('This quest version has no assigned author to receive review feedback.');
+      }
+      if (version.authorId === user.userId) {
+        throw new ForbiddenException('Authors cannot request changes to their own content.');
+      }
+
+      const transitioned = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'REVIEW' },
+        data: {
+          status: 'DRAFT',
+          reviewerId: user.userId,
+          reviewFeedback: comment,
+          approvedAt: null,
+          approvedById: null,
+        },
+      });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('This quest version has already been reviewed. Refresh the editorial queue.');
+      }
+      const updated = await tx.questVersion.findUnique({ where: { id: version.id } });
+      if (!updated) throw new ConflictException('The returned quest version could not be reloaded.');
+
+      await this.audit(tx, user.userId, 'quest.returned_for_revision', 'QUEST', id, {
+        versionId: version.id,
+        versionNo: version.versionNo,
+        status: version.status,
+      }, {
+        versionId: updated.id,
+        versionNo: updated.versionNo,
+        status: updated.status,
+        feedback: comment,
+      }, comment);
+      return {
+        id,
+        versionId: updated.id,
+        versionNo: updated.versionNo,
+        status: updated.status,
+      };
     });
   }
 
@@ -999,6 +1059,7 @@ export class AdminService {
         data: {
           status: 'APPROVED',
           reviewerId: user.userId,
+          reviewFeedback: null,
           approvedById: user.userId,
           approvedAt: new Date(),
         },

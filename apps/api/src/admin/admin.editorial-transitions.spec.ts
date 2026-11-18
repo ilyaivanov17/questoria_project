@@ -157,6 +157,157 @@ test('a stale approval is rejected and produces no audit event', async () => {
   assert.equal(auditCount, 0);
 });
 
+test('a reviewer can return a reviewed quest to its author with a required, audited comment', async () => {
+  let transitionQuery: Record<string, unknown> | undefined;
+  let auditInput: Record<string, unknown> | undefined;
+  let auditCount = 0;
+  const version = {
+    id: 'version-1',
+    questId: 'quest-1',
+    versionNo: 2,
+    status: 'REVIEW',
+    authorId: author.userId,
+  };
+  const returned = {
+    ...version,
+    status: 'DRAFT',
+    reviewerId: reviewer.userId,
+    reviewFeedback: 'Please clarify the second learning objective.',
+  };
+  const tx = {
+    questVersion: {
+      findFirst: async () => version,
+      updateMany: async (query: Record<string, unknown>) => {
+        transitionQuery = query;
+        return { count: 1 };
+      },
+      findUnique: async () => returned,
+    },
+    adminAuditLog: {
+      create: async (query: Record<string, unknown>) => {
+        auditCount += 1;
+        auditInput = query;
+        return {};
+      },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  const result = await service.requestQuestChanges(
+    reviewer,
+    'quest-1',
+    '  Please clarify the second learning objective.  ',
+  );
+
+  assert.deepEqual(transitionQuery?.where, { id: 'version-1', status: 'REVIEW' });
+  assert.deepEqual(transitionQuery?.data, {
+    status: 'DRAFT',
+    reviewerId: reviewer.userId,
+    reviewFeedback: 'Please clarify the second learning objective.',
+    approvedAt: null,
+    approvedById: null,
+  });
+  assert.deepEqual(result, {
+    id: 'quest-1',
+    versionId: 'version-1',
+    versionNo: 2,
+    status: 'DRAFT',
+  });
+  assert.equal(auditCount, 1);
+  assert.equal((auditInput?.data as { action: string }).action, 'quest.returned_for_revision');
+  assert.equal((auditInput?.data as { reason: string }).reason, 'Please clarify the second learning objective.');
+});
+
+test('an author cannot return their own version for revision', async () => {
+  let transitionCount = 0;
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        questId: 'quest-1',
+        versionNo: 2,
+        status: 'REVIEW',
+        authorId: author.userId,
+      }),
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+    adminAuditLog: {
+      create: async () => { auditCount += 1; return {}; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.requestQuestChanges(author, 'quest-1', 'Please improve the examples.'),
+    ForbiddenException,
+  );
+  assert.equal(transitionCount, 0);
+  assert.equal(auditCount, 0);
+});
+
+test('a review version without an assigned author cannot be returned', async () => {
+  let transitionCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        questId: 'quest-1',
+        versionNo: 2,
+        status: 'REVIEW',
+        authorId: null,
+      }),
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.requestQuestChanges(reviewer, 'quest-1', 'Please improve the examples.'),
+    ConflictException,
+  );
+  assert.equal(transitionCount, 0);
+});
+
+test('a stale review return is rejected without an audit event', async () => {
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        questId: 'quest-1',
+        versionNo: 2,
+        status: 'REVIEW',
+        authorId: author.userId,
+      }),
+      updateMany: async () => ({ count: 0 }),
+      findUnique: async () => { throw new Error('must not reload an untransitioned version'); },
+    },
+    adminAuditLog: {
+      create: async () => { auditCount += 1; return {}; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.requestQuestChanges(reviewer, 'quest-1', 'Please improve the examples.'),
+    ConflictException,
+  );
+  assert.equal(auditCount, 0);
+});
+
+test('review feedback must be between 10 and 2000 characters', async () => {
+  const service = makeTransactionService({});
+  await assert.rejects(
+    () => service.requestQuestChanges(reviewer, 'quest-1', 'Too short'),
+    /between 10 and 2000 characters/,
+  );
+  await assert.rejects(
+    () => service.requestQuestChanges(reviewer, 'quest-1', 'x'.repeat(2001)),
+    /between 10 and 2000 characters/,
+  );
+});
+
 test('publication is a compare-and-set transition from APPROVED and is atomic with quest status and audit', async () => {
   let transitionQuery: Record<string, unknown> | undefined;
   let questUpdate: Record<string, unknown> | undefined;

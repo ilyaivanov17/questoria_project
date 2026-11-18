@@ -259,3 +259,9 @@ export class UpdateQuestDto {
   @Type(() => LevelInputDto)
   levels?: LevelInputDto[];
 }
+
+export class RequestQuestChangesDto {
+  @IsString()
+  @Length(10, 2000)
+  feedback!: string;
+}
