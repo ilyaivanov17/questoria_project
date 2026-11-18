@@ -70,6 +70,8 @@ pnpm dev
 
 Подробности, повторный запуск setup, диагностика и безопасное управление PostgreSQL описаны в [Codespaces runbook](docs/operations/codespaces.md).
 
+Для provider-neutral production Docker targets (`api`, `web`, `migrate`) и Compose overlay см. [production environment runbook](docs/operations/production-environment.md). Контейнеры не provision-ят внешнюю БД, домен, HTTPS или secret manager.
+
 Команды:
 
 ```bash
