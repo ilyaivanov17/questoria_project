@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ContinueLearning } from '../../components/continue-learning';
 import { QuestCatalog } from '../../components/quest-catalog';
 
 export const metadata = {
@@ -69,6 +70,8 @@ export default async function QuestsPage() {
           </div>
         ) : null}
       </section>
+
+      <ContinueLearning />
 
       {categories === null ? (
         <section className="empty-state catalog-unavailable" role="alert">

@@ -3067,3 +3067,194 @@ summary:focus-visible {
   color: var(--purple-dark);
   font-weight: 800;
 }
+
+
+/* Resume saved missions from the catalog */
+.continue-learning {
+  margin: -5px 0 30px;
+  padding: 25px;
+  border: 1px solid #e2def8;
+  border-radius: 22px;
+  background: linear-gradient(115deg, #f1efff 0%, #fff 72%, #eef7f3 100%);
+}
+
+.continue-learning-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.continue-learning-heading .eyebrow {
+  margin-bottom: 8px;
+}
+
+.continue-learning-heading h2 {
+  margin: 0;
+  font-size: clamp(21px, 2.5vw, 27px);
+  letter-spacing: -0.8px;
+}
+
+.continue-learning-heading p:last-child {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.continue-profile-link {
+  flex: 0 0 auto;
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.continue-learning-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.continue-quest-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid #e8e5f5;
+  border-radius: 16px;
+  background: #ffffffed;
+  color: var(--ink);
+  transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.continue-quest-card:hover {
+  transform: translateY(-2px);
+  border-color: #c9c2f0;
+  box-shadow: 0 9px 22px #38306b12;
+}
+
+.continue-quest-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: #efedff;
+  color: var(--purple);
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.continue-quest-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+}
+
+.continue-quest-kicker {
+  color: var(--purple);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.continue-quest-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.continue-quest-meta {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.continue-quest-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.continue-quest-action span {
+  font-size: 15px;
+  transition: transform 150ms ease;
+}
+
+.continue-quest-card:hover .continue-quest-action span {
+  transform: translateX(3px);
+}
+
+.continue-quest-card:focus-visible,
+.continue-profile-link:focus-visible,
+.continue-learning-error button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.continue-learning-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -5px 0 24px;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.continue-learning-error p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.continue-learning-error button {
+  border: 0;
+  background: transparent;
+  color: var(--purple);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .continue-learning {
+    padding: 19px;
+  }
+
+  .continue-learning-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .continue-profile-link {
+    margin-top: 2px;
+  }
+
+  .continue-learning-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .continue-quest-card,
+  .continue-quest-action span {
+    transition: none;
+  }
+
+  .continue-quest-card:hover {
+    transform: none;
+  }
+}
