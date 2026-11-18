@@ -214,6 +214,131 @@ export class AdminService {
     }));
   }
 
+  async getLearningAnalytics(): Promise<object> {
+    const [skills, evidenceGroups, progressGroups] = await Promise.all([
+      this.prisma.skill.findMany({
+        orderBy: [{ name: 'asc' }, { key: 'asc' }],
+        select: { id: true, key: true, name: true },
+      }),
+      this.prisma.learningEvidence.groupBy({
+        by: ['skillId', 'taskType', 'isCorrect'],
+        _count: { _all: true },
+      }),
+      this.prisma.profileSkillProgress.groupBy({
+        by: ['skillId', 'status'],
+        _count: { _all: true },
+      }),
+    ]);
+
+    const evidenceBySkill = new Map<string, {
+      total: number;
+      successful: number;
+      tasks: Map<string, { total: number; successful: number }>;
+    }>();
+    for (const group of evidenceGroups) {
+      const current = evidenceBySkill.get(group.skillId) ?? {
+        total: 0, successful: 0, tasks: new Map(),
+      };
+      const count = group._count._all;
+      current.total += count;
+      if (group.isCorrect) current.successful += count;
+      const task = current.tasks.get(group.taskType) ?? { total: 0, successful: 0 };
+      task.total += count;
+      if (group.isCorrect) task.successful += count;
+      current.tasks.set(group.taskType, task);
+      evidenceBySkill.set(group.skillId, current);
+    }
+
+    const progressBySkill = new Map<string, {
+      learners: number;
+      mastered: number;
+      practicing: number;
+      developing: number;
+      proficient: number;
+    }>();
+    for (const group of progressGroups) {
+      const current = progressBySkill.get(group.skillId) ?? {
+        learners: 0, mastered: 0, practicing: 0, developing: 0, proficient: 0,
+      };
+      current.learners += group._count._all;
+      switch (group.status) {
+        case 'MASTERED': current.mastered += group._count._all; break;
+        case 'PRACTICING': current.practicing += group._count._all; break;
+        case 'DEVELOPING': current.developing += group._count._all; break;
+        case 'PROFICIENT': current.proficient += group._count._all; break;
+      }
+      progressBySkill.set(group.skillId, current);
+    }
+
+    const skillMetrics = skills.map((skill) => {
+      const evidence = evidenceBySkill.get(skill.id) ?? { total: 0, successful: 0, tasks: new Map() };
+      const progress = progressBySkill.get(skill.id) ?? {
+        learners: 0, mastered: 0, practicing: 0, developing: 0, proficient: 0,
+      };
+      const successRate = evidence.total ? Math.round((evidence.successful / evidence.total) * 100) : null;
+      const taskTypes = [...evidence.tasks.entries()]
+        .map(([taskType, counts]) => ({
+          taskType,
+          attempts: counts.total,
+          successful: counts.successful,
+          successRate: Math.round((counts.successful / counts.total) * 100),
+        }))
+        .sort((left, right) => left.taskType.localeCompare(right.taskType));
+      const masteryRate = progress.learners
+        ? Math.round((progress.mastered / progress.learners) * 100)
+        : null;
+      const qualitySignals: string[] = [];
+      if (evidence.total < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (evidence.total >= 10 && successRate !== null && successRate < 40) {
+        qualitySignals.push('LOW_SUCCESS_RATE');
+      }
+      if (taskTypes.length < 2 && evidence.total > 0) qualitySignals.push('LOW_TASK_DIVERSITY');
+      return {
+        skillId: skill.id,
+        skillKey: skill.key,
+        skillName: skill.name,
+        evidence: {
+          attempts: evidence.total,
+          successful: evidence.successful,
+          successRate,
+          taskTypeCount: taskTypes.length,
+          taskTypes,
+        },
+        learners: progress.learners,
+        mastery: {
+          mastered: progress.mastered,
+          proficient: progress.proficient,
+          developing: progress.developing,
+          practicing: progress.practicing,
+          masteryRate,
+        },
+        qualitySignals,
+      };
+    });
+
+    const totals = skillMetrics.reduce((sum, skill) => ({
+      skills: sum.skills + 1,
+      evidence: sum.evidence + skill.evidence.attempts,
+      successfulEvidence: sum.successfulEvidence + skill.evidence.successful,
+      learners: sum.learners + skill.learners,
+      masteredLearners: sum.masteredLearners + skill.mastery.mastered,
+    }), { skills: 0, evidence: 0, successfulEvidence: 0, learners: 0, masteredLearners: 0 });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totals: {
+        ...totals,
+        successRate: totals.evidence
+          ? Math.round((totals.successfulEvidence / totals.evidence) * 100)
+          : null,
+        masteryRate: totals.learners
+          ? Math.round((totals.masteredLearners / totals.learners) * 100)
+          : null,
+      },
+      skills: skillMetrics,
+    };
+  }
+
   async createSkill(user: AuthenticatedUser, dto: CreateSkillDto): Promise<object> {
     try {
       return await this.prisma.$transaction(async (tx) => {
