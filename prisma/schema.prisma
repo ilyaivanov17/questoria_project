@@ -396,6 +396,8 @@ model Skill {
   prerequisites SkillPrerequisite[]   @relation("SkillPrerequisiteChild")
   unlocks       SkillPrerequisite[]   @relation("SkillPrerequisiteParent")
 
+  @@index([name])
+  @@index([difficulty])
   @@map("skills")
 }
 
