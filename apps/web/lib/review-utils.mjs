@@ -1,7 +1,3 @@
-export type ReviewState = 'due' | 'upcoming';
-export type SkillStatus = 'not_started' | 'practicing' | 'developing' | 'proficient' | 'mastered';
-export type EvidenceKind = 'initial' | 'practice' | 'delayed_check' | 'transfer';
-
 export function pluralizeRussianDays(value: number): string {
   const absolute = Math.abs(Math.trunc(value));
   const mod100 = absolute % 100;
