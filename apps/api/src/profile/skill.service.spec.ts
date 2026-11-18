@@ -20,8 +20,8 @@ function createService() {
           prerequisites: [],
           progress: [{
             status: 'MASTERED',
-            attemptsCount: 7,
-            successfulAttempts: 5,
+            attemptsCount: 10,
+            successfulAttempts: 6,
             distinctPuzzles: 4,
             distinctQuestVersions: 2,
             distinctQuests: 2,
@@ -69,6 +69,13 @@ function createService() {
     questVersion: {
       findMany: async () => [
         {
+          title: 'Продвинутые логические задачи',
+          difficulty: 'advanced',
+          durationMin: 16,
+          skills: ['critical-thinking'],
+          quest: { slug: 'critical-thinking-advanced' },
+        },
+        {
           title: 'Продвинутые числовые закономерности',
           difficulty: 'advanced',
           durationMin: 12,
@@ -91,6 +98,18 @@ function createService() {
         },
       ],
     },
+    $queryRaw: async () => [
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: false },
+      { skillId: 'skill-1', isCorrect: false },
+      { skillId: 'skill-1', isCorrect: false },
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: true },
+      { skillId: 'skill-1', isCorrect: false },
+    ],
     learningEvidence: {
       findMany: async () => [{
         id: 'evidence-1',
@@ -133,6 +152,10 @@ test('returns mastery, evidence counts and a separate not-started state from one
     totalSkills: 3,
     practicedSkills: 1,
     masteredSkills: 1,
+    trendTrackedSkills: 1,
+    improvingSkills: 0,
+    stableSkills: 0,
+    decliningSkills: 1,
   });
   assert.deepEqual(result.skills[0], {
     id: 'skill-1',
@@ -143,8 +166,8 @@ test('returns mastery, evidence counts and a separate not-started state from one
     status: 'mastered',
     available: true,
     prerequisites: [],
-    attemptsCount: 7,
-    successfulAttempts: 5,
+    attemptsCount: 10,
+    successfulAttempts: 6,
     distinctPuzzles: 4,
     distinctQuestVersions: 2,
     distinctQuests: 2,
@@ -153,7 +176,21 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: '2026-11-15T10:00:00.000Z',
     lastPracticedAt: now.toISOString(),
     masteredAt: now.toISOString(),
-    recommendedQuests: [],
+    trend: {
+      direction: 'declining',
+      recentAttempts: 5,
+      recentSuccessful: 2,
+      recentSuccessRate: 40,
+      previousAttempts: 5,
+      previousSuccessful: 4,
+      previousSuccessRate: 80,
+    },
+    recommendedQuests: [{
+      slug: 'critical-thinking-advanced',
+      title: 'Продвинутые логические задачи',
+      difficulty: 'advanced',
+      durationMin: 16,
+    }],
   });
   assert.deepEqual(result.skills[1], {
     id: 'skill-2',
@@ -180,16 +217,20 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    trend: {
+      direction: 'insufficient_data',
+      recentAttempts: 0,
+      recentSuccessful: 0,
+      recentSuccessRate: null,
+      previousAttempts: 0,
+      previousSuccessful: 0,
+      previousSuccessRate: null,
+    },
     recommendedQuests: [{
       slug: 'number-patterns-basics',
       title: 'Основы числовых закономерностей',
       difficulty: 'beginner',
       durationMin: 7,
-    }, {
-      slug: 'number-patterns-advanced',
-      title: 'Продвинутые числовые закономерности',
-      difficulty: 'advanced',
-      durationMin: 12,
     }],
   });
   assert.deepEqual(result.skills[2], {
@@ -217,6 +258,15 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    trend: {
+      direction: 'insufficient_data',
+      recentAttempts: 0,
+      recentSuccessful: 0,
+      recentSuccessRate: null,
+      previousAttempts: 0,
+      previousSuccessful: 0,
+      previousSuccessRate: null,
+    },
     recommendedQuests: [],
   });
   assert.deepEqual(result.recentEvidence, [{

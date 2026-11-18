@@ -41,22 +41,6 @@ export interface PlayerSkillQuestRecommendation {
   durationMin: number;
 }
 
-export type PlayerSkillTrendDirection =
-  | 'insufficient_data'
-  | 'improving'
-  | 'stable'
-  | 'declining';
-
-export interface PlayerSkillLearningTrend {
-  direction: PlayerSkillTrendDirection;
-  recentAttempts: number;
-  recentSuccessful: number;
-  recentSuccessRate: number | null;
-  previousAttempts: number;
-  previousSuccessful: number;
-  previousSuccessRate: number | null;
-}
-
 export interface PlayerSkillProgress {
   id: string;
   key: string;
@@ -76,7 +60,6 @@ export interface PlayerSkillProgress {
   firstPracticedAt: string | null;
   lastPracticedAt: string | null;
   masteredAt: string | null;
-  trend: PlayerSkillLearningTrend;
   recommendedQuests: PlayerSkillQuestRecommendation[];
 }
 
@@ -102,10 +85,6 @@ export interface PlayerSkillsResponse {
     totalSkills: number;
     practicedSkills: number;
     masteredSkills: number;
-    trendTrackedSkills: number;
-    improvingSkills: number;
-    stableSkills: number;
-    decliningSkills: number;
   };
 }
 
