@@ -290,5 +290,42 @@ test(
       firstRunLedgerCount,
       'replaying the same published quest version must not create ledger entries',
     );
+
+    // A legacy run abandoned after its final exhausted puzzle is terminal. It
+    // must not be reopened as an empty IN_PROGRESS run that blocks a new start.
+    const legacyExhaustedRun = await service.startRun(profileId, { slug: quest.slug }) as RunSnapshot;
+    assert.ok(legacyExhaustedRun.currentPuzzle);
+    const legacyFirst = await service.submitAttempt(
+      profileId,
+      legacyExhaustedRun.id,
+      legacyExhaustedRun.currentPuzzle.id,
+      { attemptId: randomUUID(), answer: { optionId: 'first-wrong' } },
+    );
+    assert.equal(legacyFirst.runCompleted, false);
+    const legacyProgress = await service.getRun(profileId, legacyExhaustedRun.id) as RunSnapshot;
+    assert.ok(legacyProgress.currentPuzzle);
+    const legacyFinal = await service.submitAttempt(
+      profileId,
+      legacyExhaustedRun.id,
+      legacyProgress.currentPuzzle.id,
+      { attemptId: randomUUID(), answer: { optionId: 'final-wrong' } },
+    );
+    assert.equal(legacyFinal.runCompleted, true);
+
+    // Model the ABANDONED status written by the previous release for this
+    // all-exhausted run.
+    await prisma.questRun.update({
+      where: { id: legacyExhaustedRun.id },
+      data: { status: 'ABANDONED', completedAt: new Date() },
+    });
+    const terminalLegacyRun = await service.getRun(profileId, legacyExhaustedRun.id) as RunSnapshot;
+    assert.equal(terminalLegacyRun.status, 'ABANDONED');
+    assert.equal(terminalLegacyRun.currentPuzzle, null);
+    assert.equal(terminalLegacyRun.result?.success, false);
+
+    const freshRun = await service.startRun(profileId, { slug: quest.slug }) as RunSnapshot;
+    assert.notEqual(freshRun.id, legacyExhaustedRun.id);
+    assert.equal(freshRun.status, 'IN_PROGRESS');
+    assert.ok(freshRun.currentPuzzle);
   },
 );
