@@ -56,8 +56,56 @@ jobs:
           docker compose -f infra/docker/docker-compose.yml config --quiet
           docker compose -f infra/docker/docker-compose.production.yml config --quiet
 
-      - name: Build production Docker targets
+      - name: Run production containers against an isolated CI database
+        env:
+          DATABASE_URL: postgresql://questoria:questoria_local_only@postgres:5432/questoria?schema=public
+          WEB_ORIGIN: https://questoria.example.invalid
+          NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
+          RESEND_API_KEY: ci-placeholder-not-a-real-secret
+          EMAIL_FROM: "Questoria <no-reply@example.invalid>"
+          MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         run: |
-          docker build -f infra/docker/Dockerfile --target api -t questoria-api:ci .
-          docker build -f infra/docker/Dockerfile --target web -t questoria-web:ci --build-arg API_INTERNAL_URL=http://api:4000 .
-          docker build -f infra/docker/Dockerfile --target migrate -t questoria-migrate:ci .
+          set -euo pipefail
+          local_compose=(docker compose -p questoria -f infra/docker/docker-compose.yml)
+          production_compose=(docker compose -p questoria -f infra/docker/docker-compose.production.yml)
+
+          "${local_compose[@]}" up -d postgres
+          ready=0
+          for attempt in $(seq 1 45); do
+            if "${local_compose[@]}" exec -T postgres pg_isready -U questoria -d questoria >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" -ne 1 ]]; then
+            "${local_compose[@]}" logs --no-color --tail=80 postgres
+            exit 1
+          fi
+
+          # Migrations are an explicit release action, not an application startup side effect.
+          "${production_compose[@]}" --profile release run --rm migrate
+          "${production_compose[@]}" up -d --build
+
+          healthy=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health/ready >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$healthy" -ne 1 ]]; then
+            "${production_compose[@]}" logs --no-color --tail=100 api web
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/ >/dev/null
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health >/dev/null
+          "${production_compose[@]}" ps
+
+      - name: Stop production CI containers (preserve volumes)
+        if: always()
+        run: |
+          docker compose -p questoria -f infra/docker/docker-compose.production.yml down --remove-orphans || true
+          docker compose -p questoria -f infra/docker/docker-compose.yml down --remove-orphans || true
