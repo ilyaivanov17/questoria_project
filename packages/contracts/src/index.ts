@@ -17,6 +17,8 @@ export interface PuzzleAnswerReview {
   explanation: string;
   /** Answer shape matches the answer field for the puzzle type. */
   correctAnswer: Record<string, unknown>;
+  /** Human-readable answer text mapped from the public option/item labels. */
+  correctAnswerText: string;
 }
 
 export interface PuzzleAttemptResponse {
