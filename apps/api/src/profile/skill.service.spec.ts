@@ -1,0 +1,134 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import type { PrismaService } from '../prisma/prisma.service.js';
+import { SkillService } from './skill.service.js';
+
+const profileId = '11111111-1111-4111-8111-111111111111';
+const now = new Date('2026-11-18T10:00:00.000Z');
+
+function createService() {
+  const transactionOptions: Array<{ isolationLevel?: string }> = [];
+  const tx = {
+    skill: {
+      findMany: async () => [
+        {
+          id: 'skill-1',
+          key: 'critical-thinking',
+          name: 'Критическое мышление',
+          description: 'Проверяй утверждения и находи закономерности.',
+          difficulty: 'intermediate',
+          progress: [{
+            status: 'MASTERED',
+            attemptsCount: 7,
+            successfulAttempts: 5,
+            distinctPuzzles: 4,
+            distinctQuestVersions: 2,
+            distinctQuests: 2,
+            distinctTaskTypes: 3,
+            firstPracticedAt: new Date('2026-11-15T10:00:00.000Z'),
+            lastPracticedAt: now,
+            masteredAt: now,
+          }],
+        },
+        {
+          id: 'skill-2',
+          key: 'number-patterns',
+          name: 'Числовые закономерности',
+          description: null,
+          difficulty: null,
+          progress: [],
+        },
+      ],
+    },
+    learningEvidence: {
+      findMany: async () => [{
+        id: 'evidence-1',
+        taskType: 'ordering',
+        evidenceType: 'TRANSFER',
+        isCorrect: true,
+        score: 10,
+        occurredAt: now,
+        skill: { key: 'critical-thinking', name: 'Критическое мышление' },
+        questVersion: {
+          title: 'Логическая миссия',
+          quest: { slug: 'logic-mission' },
+        },
+        puzzle: {
+          orderNo: 2,
+          level: { title: 'Найди закономерность' },
+        },
+      }],
+    },
+  };
+  const prisma = {
+    $transaction: async (
+      callback: (client: typeof tx) => Promise<unknown>,
+      options: { isolationLevel?: string },
+    ) => {
+      transactionOptions.push(options);
+      return callback(tx);
+    },
+  } as unknown as PrismaService;
+  return { service: new SkillService(prisma), transactionOptions };
+}
+
+test('returns mastery, evidence counts and a separate not-started state from one snapshot', async () => {
+  const { service, transactionOptions } = createService();
+
+  const result = await service.getSkills(profileId);
+
+  assert.deepEqual(transactionOptions, [{ isolationLevel: 'RepeatableRead' }]);
+  assert.deepEqual(result.summary, {
+    totalSkills: 2,
+    practicedSkills: 1,
+    masteredSkills: 1,
+  });
+  assert.deepEqual(result.skills[0], {
+    id: 'skill-1',
+    key: 'critical-thinking',
+    name: 'Критическое мышление',
+    description: 'Проверяй утверждения и находи закономерности.',
+    difficulty: 'intermediate',
+    status: 'mastered',
+    attemptsCount: 7,
+    successfulAttempts: 5,
+    distinctPuzzles: 4,
+    distinctQuestVersions: 2,
+    distinctQuests: 2,
+    distinctTaskTypes: 3,
+    firstPracticedAt: '2026-11-15T10:00:00.000Z',
+    lastPracticedAt: now.toISOString(),
+    masteredAt: now.toISOString(),
+  });
+  assert.deepEqual(result.skills[1], {
+    id: 'skill-2',
+    key: 'number-patterns',
+    name: 'Числовые закономерности',
+    description: null,
+    difficulty: null,
+    status: 'not_started',
+    attemptsCount: 0,
+    successfulAttempts: 0,
+    distinctPuzzles: 0,
+    distinctQuestVersions: 0,
+    distinctQuests: 0,
+    distinctTaskTypes: 0,
+    firstPracticedAt: null,
+    lastPracticedAt: null,
+    masteredAt: null,
+  });
+  assert.deepEqual(result.recentEvidence, [{
+    id: 'evidence-1',
+    skillKey: 'critical-thinking',
+    skillName: 'Критическое мышление',
+    taskType: 'ordering',
+    evidenceType: 'transfer',
+    isCorrect: true,
+    score: 10,
+    occurredAt: now.toISOString(),
+    questTitle: 'Логическая миссия',
+    questSlug: 'logic-mission',
+    levelTitle: 'Найди закономерность',
+    puzzleOrder: 2,
+  }]);
+});
