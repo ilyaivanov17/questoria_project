@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ReviewQueuePreview, type ReviewQueueResponse } from './review-queue';
+import { SkillProgressSection, type PlayerSkillsResponse } from './skill-progress-section';
 
 interface ProfileData {
   id: string;
@@ -81,13 +83,18 @@ export function ProfileClient() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [skillsData, setSkillsData] = useState<PlayerSkillsResponse | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueueResponse | null>(null);
+  const [skillsError, setSkillsError] = useState('');
+  const [reviewQueueError, setReviewQueueError] = useState('');
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const [profileData, progressData, walletData] = await Promise.all([
@@ -99,6 +106,39 @@ export function ProfileClient() {
       setProgress(progressData);
       setWallet(walletData);
       setNickname(profileData.nickname ?? '');
+
+      // Learning data is additive: a temporary failure in the new endpoints
+      // must not hide the core profile, wallet or mission history.
+      const [skillsResult, reviewResult] = await Promise.allSettled([
+        fetchJson('/me/skills') as Promise<PlayerSkillsResponse>,
+        fetchJson('/me/review-queue') as Promise<ReviewQueueResponse>,
+      ]);
+      const unauthorized = [skillsResult, reviewResult].some(
+        (result) => result.status === 'rejected'
+          && result.reason instanceof Error
+          && 'status' in result.reason
+          && result.reason.status === 401,
+      );
+      if (unauthorized) {
+        router.replace('/login?next=%2Fprofile');
+        return;
+      }
+
+      if (skillsResult.status === 'fulfilled') {
+        setSkillsData(skillsResult.value);
+        setSkillsError('');
+      } else {
+        setSkillsData(null);
+        setSkillsError('Не удалось загрузить карту навыков. Обнови профиль чуть позже.');
+      }
+
+      if (reviewResult.status === 'fulfilled') {
+        setReviewQueue(reviewResult.value);
+        setReviewQueueError('');
+      } else {
+        setReviewQueue(null);
+        setReviewQueueError('Очередь повторения временно недоступна.');
+      }
     } catch (loadError) {
       if (loadError instanceof Error && 'status' in loadError && loadError.status === 401) {
         router.replace('/login?next=%2Fprofile');
@@ -151,18 +191,41 @@ export function ProfileClient() {
   }
 
   if (loading) {
-    return <main className="profile-page"><p className="muted-copy">Загружаем профиль…</p></main>;
+    return (
+      <main className="profile-page profile-loading" aria-busy="true">
+        <header className="topbar profile-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark">Q</span><span>questoria</span>
+          </Link>
+          <Link className="simple-nav-link" href="/quests">К квестам</Link>
+        </header>
+        <section className="profile-loading-heading" aria-hidden="true">
+          <span className="profile-skeleton-avatar" />
+          <span className="profile-skeleton-lines"><i /><i /></span>
+        </section>
+        <p className="muted-copy" role="status">Загружаем твой прогресс и историю миссий…</p>
+        <div className="profile-loading-grid" aria-hidden="true">
+          <span /><span /><span /><span />
+        </div>
+      </main>
+    );
   }
 
   if (!profile || !progress || !wallet) {
     return (
       <main className="profile-page">
+        <header className="topbar profile-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark">Q</span><span>questoria</span>
+          </Link>
+          <Link className="simple-nav-link" href="/quests">К квестам</Link>
+        </header>
         <section className="profile-empty">
           <p className="eyebrow">ПРОФИЛЬ</p>
           <h1>Не удалось открыть профиль</h1>
-          <p className="muted-copy">{error || 'Проверь соединение и попробуй ещё раз.'}</p>
-          <button className="button button-primary" onClick={() => void loadProfile()} type="button">
-            Повторить
+          <p className="muted-copy" role="alert">{error || 'Проверь соединение и попробуй ещё раз.'}</p>
+          <button className="button button-primary" onClick={() => void loadProfile(true)} type="button">
+            Повторить загрузку
           </button>
         </section>
       </main>
@@ -197,7 +260,7 @@ export function ProfileClient() {
           <div><p className="eyebrow">ТВОЙ УРОВЕНЬ</p><h2>Исследователь · уровень {profile.progression.level}</h2></div>
           <strong>{profile.progression.totalXp.toLocaleString('ru-RU')} XP</strong>
         </div>
-        <div className="xp-progress-track" role="progressbar" aria-valuenow={profile.progression.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс до следующего уровня">
+        <div className="xp-progress-track" role="progressbar" aria-valuenow={profile.progression.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-valuetext={`${profile.progression.xpIntoLevel} из ${profile.progression.xpForNextLevel} XP на текущем уровне`} aria-label="Прогресс до следующего уровня">
           <span style={{ width: `${profile.progression.progressPercent}%` }} />
         </div>
         <p>{profile.progression.xpIntoLevel} / {profile.progression.xpForNextLevel} XP на этом уровне · ещё {profile.progression.xpToNextLevel} XP до следующего</p>
@@ -225,12 +288,16 @@ export function ProfileClient() {
         <article><strong>{progress.stats.completedLevels}</strong><span>Пройденных этапов</span></article>
       </section>
 
+      <ReviewQueuePreview data={reviewQueue} error={reviewQueueError} />
+      <SkillProgressSection data={skillsData} error={skillsError} />
+
       <section className="profile-section achievement-section">
         <div className="profile-section-heading">
           <div><p className="eyebrow">ТВОИ ДОСТИЖЕНИЯ</p><h2>Значки исследователя</h2></div>
           <span className="achievement-count">{profile.progression.unlockedAchievements} / {profile.progression.achievements.length}</span>
         </div>
-        <div className="achievement-grid">
+        {profile.progression.achievements.length ? (
+          <div className="achievement-grid">
           {profile.progression.achievements.map((achievement) => (
             <article className={achievement.unlocked ? 'achievement-card unlocked' : 'achievement-card locked'} key={achievement.id}>
               <span className="achievement-icon">{achievement.unlocked ? achievement.icon : '◇'}</span>
@@ -238,7 +305,12 @@ export function ProfileClient() {
               <span className="achievement-state">{achievement.unlocked ? 'Получено' : 'Впереди'}</span>
             </article>
           ))}
-        </div>
+          </div>
+        ) : (
+          <div className="profile-empty-inline" role="status">
+            Достижения появятся здесь, когда ты завершишь первые этапы и миссии.
+          </div>
+        )}
       </section>
 
       <div className="profile-columns">
