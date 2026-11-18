@@ -9,6 +9,7 @@ export interface PuzzleValidationResult {
 export interface PuzzleAnswerReview {
   explanation: string;
   correctAnswer: Record<string, unknown>;
+  correctAnswerText: string;
 }
 
 function invalidAnswer(message: string): never {
@@ -100,13 +101,18 @@ export function buildPuzzleReview(
   }
 
   let correctAnswer: Record<string, unknown>;
+  let correctAnswerText: string;
   switch (type) {
     case 'single_choice': {
       const optionId = solution.correctOptionId;
-      if (typeof optionId !== 'string' || !options.some((option) => option.id === optionId)) {
+      const correctOption = typeof optionId === 'string'
+        ? options.find((option) => option.id === optionId)
+        : undefined;
+      if (!correctOption) {
         invalidConfiguration('correctOptionId must match a public option.');
       }
       correctAnswer = { optionId };
+      correctAnswerText = correctOption.label;
       break;
     }
     case 'multiple_choice': {
@@ -116,6 +122,9 @@ export function buildPuzzleReview(
         invalidConfiguration('correctOptionIds must match public options.');
       }
       correctAnswer = { optionIds };
+      correctAnswerText = optionIds
+        .map((id) => options.find((option) => option.id === id)!.label)
+        .join(', ');
       break;
     }
     case 'numeric_input': {
@@ -124,10 +133,14 @@ export function buildPuzzleReview(
         invalidConfiguration('correctValue must be a finite number.');
       }
       correctAnswer = { value };
+      const unit = typeof publicData.unit === 'string' ? publicData.unit.trim() : '';
+      correctAnswerText = unit ? `${value} ${unit}` : String(value);
       break;
     }
     case 'text_input': {
-      correctAnswer = { acceptedAnswers: stringArray(solution.acceptedAnswers, 'acceptedAnswers') };
+      const acceptedAnswers = stringArray(solution.acceptedAnswers, 'acceptedAnswers');
+      correctAnswer = { acceptedAnswers };
+      correctAnswerText = acceptedAnswers.join(' / ');
       break;
     }
     case 'ordering': {
@@ -137,13 +150,16 @@ export function buildPuzzleReview(
         invalidConfiguration('correctOrderIds must contain every public item exactly once.');
       }
       correctAnswer = { orderedIds };
+      correctAnswerText = orderedIds
+        .map((id) => items.find((item) => item.id === id)!.label)
+        .join(' → ');
       break;
     }
     default:
       invalidConfiguration('puzzle type is not supported for review.');
   }
 
-  return { explanation, correctAnswer };
+  return { explanation, correctAnswer, correctAnswerText };
 }
 
 export function validatePuzzleAnswer(
