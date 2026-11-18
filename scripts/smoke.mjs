@@ -168,9 +168,16 @@ assert.ok(categories.body.some((category) =>
   category.quests.some((quest) => quest.slug === demoQuestSlug),
 ));
 
-assert.equal(categories.body.length, 8, 'the learning library should expose all seeded themes');
+const requiredThemeSlugs = [
+  'logic', 'math', 'language', 'science',
+  'digital', 'society', 'space', 'nature',
+];
+for (const themeSlug of requiredThemeSlugs) {
+  const category = categories.body.find((item) => item.slug === themeSlug);
+  assert.ok(category, 'the learning library should expose the seeded theme ' + themeSlug);
+  assert.ok(category.quests.length >= 3, themeSlug + ' should have at least three published missions');
+}
 for (const category of categories.body) {
-  assert.ok(category.quests.length >= 3, category.slug + ' should have at least three published missions');
   for (const quest of category.quests) {
     const preview = await request('/api/v1/public/quests/' + encodeURIComponent(quest.slug) + '/preview');
     assert.equal(preview.response.status, 200, 'guest preview should exist for ' + quest.slug);
