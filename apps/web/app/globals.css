@@ -3434,3 +3434,42 @@ summary:focus-visible {
     width: 100%;
   }
 }
+
+/* Structured CMS quest editor */
+.admin-editor { display: grid; gap: 18px; }
+.admin-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.admin-editor-heading h3, .admin-editor-heading h4, .admin-editor-heading h5 { margin: 0; }
+.admin-editor-heading h3 { font-size: 19px; }
+.admin-editor-heading h4 { font-size: 15px; }
+.admin-editor-heading h5 { font-size: 13px; }
+.admin-editor-heading p, .admin-editor-help { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.admin-level-editor { display: grid; gap: 14px; }
+.admin-level-card { display: grid; gap: 13px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fbfbfe; }
+.admin-puzzle-list { display: grid; gap: 12px; margin: 2px 0 6px; }
+.admin-puzzle-card { display: grid; gap: 12px; padding: 16px; border: 1px solid #e7e7f0; border-radius: 14px; background: #fff; }
+.admin-puzzle-options { display: grid; gap: 10px; padding: 13px; border-radius: 12px; background: #f7f7fc; }
+.admin-option-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(160px, 1.4fr) auto; align-items: end; gap: 9px; }
+.admin-option-row .field { min-width: 0; }
+.admin-skill-picker, .admin-answer-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 15px; min-width: 0; margin: 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; }
+.admin-skill-picker legend, .admin-answer-picker legend { padding: 0 6px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.admin-skill-option, .admin-answer-picker label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
+.admin-skill-option input, .admin-answer-picker input { width: 16px; min-height: 16px; accent-color: var(--purple); }
+.admin-order-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 9px; border-radius: 9px; background: #fff; color: var(--ink); font-size: 12px; }
+.admin-review-answer { display: grid; gap: 5px; padding: 12px; border-left: 3px solid var(--purple); border-radius: 8px; background: #f4f2ff; }
+.admin-review-answer p { margin: 0; font-size: 13px; font-weight: 700; }
+.admin-review-answer small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.admin-review-banner { margin: 0; padding: 12px 14px; border-radius: 11px; background: #f5f3ff; color: #51469a; font-size: 13px; }
+.admin-editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.admin-editor-preview { display: grid; gap: 12px; padding: 18px; border: 1px dashed #c9c6df; border-radius: 15px; background: #faf9ff; }
+.admin-editor-preview h4, .admin-editor-preview p { margin: 0; }
+.admin-editor-preview > article { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid #e8e5f5; }
+.admin-editor-preview > article > p { color: var(--muted); font-size: 12px; }
+.admin-preview-puzzle { display: grid; gap: 4px; padding: 9px 11px; border-radius: 9px; background: #fff; font-size: 12px; }
+.admin-preview-puzzle small { padding-left: 12px; color: var(--muted); font-size: 11px; }
+.admin-section-description { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 700px) {
+  .admin-editor-heading { align-items: flex-start; flex-direction: column; }
+  .admin-option-row { grid-template-columns: 1fr; }
+  .admin-skill-picker, .admin-answer-picker { grid-template-columns: 1fr; }
+  .admin-editor-actions { align-items: stretch; flex-direction: column-reverse; }
+}

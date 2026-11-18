@@ -85,6 +85,69 @@ test('REVIEWER can inspect all quest versions for editorial review', async () =>
   );
 });
 
+test('quest list marks only drafts managed by the current author as editable', async () => {
+  const prisma = {
+    quest: {
+      findMany: async () => [
+        {
+          id: 'owned-draft',
+          slug: 'owned-draft',
+          status: 'DRAFT',
+          category: { title: 'Logic', slug: 'logic' },
+          versions: [{ id: 'version-1', versionNo: 1, title: 'Owned', status: 'DRAFT', authorId: author.userId }],
+        },
+        {
+          id: 'published',
+          slug: 'published',
+          status: 'PUBLISHED',
+          category: { title: 'Logic', slug: 'logic' },
+          versions: [{ id: 'version-2', versionNo: 1, title: 'Published', status: 'PUBLISHED', authorId: 'other-author' }],
+        },
+      ],
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const result = await service.listQuests(author) as Array<{ id: string; canEditDraft: boolean; latestVersion: { authorId?: string } }>;
+
+  assert.equal(result[0]?.canEditDraft, true);
+  assert.equal(result[1]?.canEditDraft, false);
+  assert.equal('authorId' in (result[0]?.latestVersion ?? {}), false);
+});
+
+test('REVIEWER quest detail retains private answers for the editorial inspection screen', async () => {
+  const prisma = {
+    quest: {
+      findFirst: async () => ({
+        id: 'quest-review',
+        categoryId: 'category-1',
+        category: { title: 'Logic' },
+        versions: [{
+          id: 'version-review',
+          status: 'REVIEW',
+          authorId: 'author-1',
+          levels: [{
+            id: 'level-1',
+            puzzles: [{
+              id: 'puzzle-1',
+              publicPayload: { prompt: 'Choose' },
+              solutionPrivate: { correctOptionId: 'right' },
+              hints: [{ body: 'Look carefully' }],
+            }],
+          }],
+        }],
+      }),
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const detail = await service.getQuest(reviewer, 'quest-review') as {
+    versions: Array<{ levels: Array<{ puzzles: Array<{ solutionPrivate: Record<string, unknown> }> }> }>;
+  };
+
+  assert.equal(detail.versions[0]?.levels[0]?.puzzles[0]?.solutionPrivate.correctOptionId, 'right');
+});
+
 test('AUTHOR cannot edit another author\'s draft even when the route role permits quest updates', async () => {
   let transactionCalled = false;
   const prisma = {
