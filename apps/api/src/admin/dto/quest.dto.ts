@@ -176,6 +176,11 @@ export class UpdateQuestDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['ru', 'de', 'en'])
+  locale?: string;
+
+  @IsOptional()
+  @IsString()
   @Length(5, 160)
   title?: string;
 

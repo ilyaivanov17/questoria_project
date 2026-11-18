@@ -154,7 +154,7 @@ export class AdminService {
             : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
-          select: { id: true, versionNo: true, title: true, status: true, updatedAt: true },
+          select: { id: true, versionNo: true, title: true, status: true, updatedAt: true, authorId: true },
         },
       },
     });
@@ -163,7 +163,19 @@ export class AdminService {
       slug: quest.slug,
       status: quest.status,
       category: quest.category,
-      latestVersion: quest.versions[0] ?? null,
+      canEditDraft: Boolean(
+        quest.versions[0]?.status === 'DRAFT'
+        && canManageQuestDraft(user, quest.versions[0].authorId),
+      ),
+      latestVersion: quest.versions[0]
+        ? {
+          id: quest.versions[0].id,
+          versionNo: quest.versions[0].versionNo,
+          title: quest.versions[0].title,
+          status: quest.versions[0].status,
+          updatedAt: quest.versions[0].updatedAt,
+        }
+        : null,
     }));
   }
 
@@ -819,6 +831,7 @@ export class AdminService {
           ...(dto.summary !== undefined ? { summary: dto.summary.trim() } : {}),
           ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
           ...(dto.internalName !== undefined ? { internalName: dto.internalName.trim() || null } : {}),
+          ...(dto.locale !== undefined ? { locale: dto.locale } : {}),
           ...(dto.objectives !== undefined ? { objectives: jsonInput(dto.objectives) } : {}),
           ...(skillNames !== undefined ? { skills: skillNames } : {}),
           ...(dto.ageMin !== undefined ? { ageMin: dto.ageMin } : {}),

@@ -1,11 +1,12 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { QuestEditor, type CmsQuestDetail, type CmsSkillOption, type QuestEditorPayload } from './quest-editor';
 
 type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled: boolean; sessionMfaVerified: boolean };
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
-type Quest = { id: string; slug: string; status: string; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
+type Quest = { id: string; slug: string; status: string; canEditDraft: boolean; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
 type Audit = {
   id: string; action: string; entityType: string; entityId: string;
   reason: string | null; beforeJson: unknown; afterJson: unknown;
@@ -46,8 +47,6 @@ const managedRoleOptions = [
   { key: 'ADMIN', label: 'Администратор' },
   { key: 'SUPER_ADMIN', label: 'Суперадминистратор' },
 ] as const;
-const starterLevels = [{ orderNo: 1, title: 'Первый уровень', intro: 'Сюжет и инструкция для игрока.', puzzles: [{ orderNo: 1, type: 'single_choice', maxAttempts: 3, maxScore: 10, publicPayload: { prompt: 'Что продолжает ряд 3, 6, 12?', options: [{ id: 'a', label: '18' }, { id: 'b', label: '24' }, { id: 'c', label: '30' }] }, solutionPrivate: { correctOptionId: 'b', correctFeedback: 'Каждый раз число удваивается.', incorrectFeedback: 'Сравни соседние числа.' }, hints: ['Попробуй умножить последнее число на 2.'] }] }];
-
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api/v1${path}`, {
     ...init, credentials: 'include', cache: 'no-store',
@@ -104,23 +103,9 @@ export function AdminClient() {
   const [catDescription, setCatDescription] = useState('Рубрика образовательных миссий по выбранной теме.');
   const [catLocale, setCatLocale] = useState('ru');
 
-  const [categoryId, setCategoryId] = useState('');
-  const [slug, setSlug] = useState('');
-  const [title, setTitle] = useState('');
-  const [summary, setSummary] = useState('');
-  const [description, setDescription] = useState('');
-  const [objectives, setObjectives] = useState('Находить закономерности\nОбъяснять ход решения');
-  const [skills, setSkills] = useState('logical-reasoning');
-  const [ageMin, setAgeMin] = useState('14');
-  const [ageMax, setAgeMax] = useState('99');
-  const [difficulty, setDifficulty] = useState('beginner');
-  const [duration, setDuration] = useState('10');
-  const [seoTitle, setSeoTitle] = useState('');
-  const [seoDescription, setSeoDescription] = useState('');
-  const [coverUrl, setCoverUrl] = useState('/media/add-approved-cover');
-  const [coverAlt, setCoverAlt] = useState('');
-  const [coverLicense, setCoverLicense] = useState('');
-  const [levelsJson, setLevelsJson] = useState(JSON.stringify(starterLevels, null, 2));
+  const [skillOptions, setSkillOptions] = useState<CmsSkillOption[]>([]);
+  const [editor, setEditor] = useState<{ mode: 'new' | 'edit' | 'review'; quest?: CmsQuestDetail } | null>(null);
+  const [editorLoading, setEditorLoading] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -129,15 +114,17 @@ export function AdminClient() {
       setIdentity(result.user);
       const adminNeedsMfa = result.user.roleKeys.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r));
       if (!adminNeedsMfa || (result.user.mfaEnabled && result.user.sessionMfaVerified)) {
-        const [cats, qs, members] = await Promise.all([
+        const [cats, qs, skillCatalog, members] = await Promise.all([
           api<Category[]>('/admin/categories'),
           api<Quest[]>('/admin/quests'),
+          api<CmsSkillOption[]>('/admin/skills'),
           result.user.roleKeys.includes('SUPER_ADMIN')
             ? api<ManagedUser[]>('/admin/users')
             : Promise.resolve([] as ManagedUser[]),
         ]);
         setCategories(cats);
         setQuests(qs);
+        setSkillOptions(skillCatalog);
         setManagedUsers(members);
         if (result.user.mfaEnabled && result.user.sessionMfaVerified) {
           const recoveryStatus = await api<{ remaining: number }>('/admin/mfa/recovery-codes/status');
@@ -145,7 +132,6 @@ export function AdminClient() {
         } else {
           setRecoveryCodeCount(0);
         }
-        setCategoryId((value) => value || cats.find((cat) => cat.status === 'PUBLISHED')?.id || '');
         if (result.user.roleKeys.some((r) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(r))) {
           const auditPage = await api<AuditPage>('/admin/audit-logs?take=' + AUDIT_PAGE_SIZE + '&skip=0');
           setAudit(auditPage.items);
@@ -255,25 +241,32 @@ export function AdminClient() {
     setCatSlug(''); setCatTitle('');
   }
 
-  async function submitQuest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    let levels: unknown;
-    try { levels = JSON.parse(levelsJson); }
-    catch { setError('JSON уровней содержит синтаксическую ошибку.'); return; }
-    await action(() => api('/admin/quests', {
-      method: 'POST',
-      body: JSON.stringify({
-        categoryId, slug, locale: 'ru', title, summary, description,
-        objectives: objectives.split('\n').map((s) => s.trim()).filter(Boolean),
-        skills: skills.split(',').map((s) => s.trim()).filter(Boolean),
-        ageMin: Number(ageMin), ageMax: Number(ageMax), difficulty, durationMin: Number(duration),
-        seo: { title: seoTitle, description: seoDescription },
-        coverUrl, coverAlt, coverLicenseSource: coverLicense, levels,
-      }),
-    }), 'Черновик сохранён. Его можно отправить на рецензирование.');
-    setSlug(''); setTitle('');
+  async function openQuestEditor(quest: Quest, mode: 'edit' | 'review') {
+    setEditorLoading(true);
+    setError('');
+    try {
+      const detail = await api<CmsQuestDetail>('/admin/quests/' + quest.id);
+      setEditor({ mode, quest: detail });
+      document.getElementById('admin-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось открыть версию квеста.');
+    } finally {
+      setEditorLoading(false);
+    }
   }
 
+  async function saveQuest(payload: QuestEditorPayload): Promise<boolean> {
+    if (!editor || editor.mode === 'review') return false;
+    const isEditing = editor.mode === 'edit' && editor.quest;
+    const path = isEditing ? '/admin/quests/' + editor.quest!.id : '/admin/quests';
+    const result = await action(() => api(path, {
+      method: isEditing ? 'PATCH' : 'POST',
+      body: JSON.stringify(payload),
+    }), isEditing ? 'Изменения черновика сохранены.' : 'Черновик квеста создан.');
+    if (!result) return false;
+    setEditor(null);
+    return true;
+  }
 
   async function assignManagedRole(user: ManagedUser) {
     const role = userRoleDrafts[user.id] ?? 'AUTHOR';
@@ -629,44 +622,36 @@ export function AdminClient() {
         <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span></div>
         <div className="admin-row-actions"><span className={`admin-status status-${status.toLowerCase()}`}>{status}</span>
           {status === 'PUBLISHED' && canAuthor && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Новая версия</button>}
-          {status === 'DRAFT' && canAuthor && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">На рецензию</button>}
+          {status === 'DRAFT' && quest.canEditDraft && <button className="button button-small button-secondary" disabled={busy} onClick={() => void openQuestEditor(quest, 'edit')} type="button">Открыть редактор</button>}
+          {status === 'DRAFT' && quest.canEditDraft && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">На рецензию</button>}
+          {status === 'REVIEW' && canReview && <button className="button button-small button-secondary" disabled={busy || editorLoading} onClick={() => void openQuestEditor(quest, 'review')} type="button">Проверить</button>}
           {status === 'REVIEW' && canReview && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Одобрить</button>}
           {status === 'APPROVED' && canPublish && <button className="button button-small button-primary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Опубликовать</button>}
         </div>
       </article>; })}{!quests.length && <p className="admin-empty">Квестов пока нет.</p>}</div>
     </section>
 
-    {canAuthor && <section id="admin-editor" className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">04 / CONTENT EDITOR</p><h2>Новый квест</h2></div></div>
-      <form className="admin-form admin-form-grid" onSubmit={submitQuest}>
-        <label className="field admin-field-wide"><span>Опубликованная рубрика</span><select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required><option value="">Выбери рубрику</option>{categories.filter((c) => c.status === 'PUBLISHED').map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
-        <label className="field"><span>Slug</span><input value={slug} onChange={(e) => setSlug(e.target.value)} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required/></label>
-        <label className="field"><span>Название</span><input value={title} onChange={(e) => setTitle(e.target.value)} minLength={5} required/></label>
-        <label className="field admin-field-wide"><span>Краткое описание</span><textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} minLength={20} required/></label>
-        <label className="field admin-field-wide"><span>Полное описание</span><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} minLength={50} required/></label>
-        <label className="field"><span>Учебные цели (по одной на строку)</span><textarea rows={3} value={objectives} onChange={(e) => setObjectives(e.target.value)} required/></label>
-        <label className="field"><span>Навыки (через запятую)</span><input value={skills} onChange={(e) => setSkills(e.target.value)} required/></label>
-        <label className="field"><span>Возраст от</span><input type="number" min="14" max="99" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} required/></label>
-        <label className="field"><span>Возраст до</span><input type="number" min="14" max="99" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} required/></label>
-        <label className="field"><span>Сложность</span><select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}><option value="beginner">Начальная</option><option value="intermediate">Средняя</option><option value="advanced">Продвинутая</option></select></label>
-        <label className="field"><span>Длительность (мин)</span><input type="number" min="1" max="240" value={duration} onChange={(e) => setDuration(e.target.value)} required/></label>
-        <label className="field"><span>SEO title</span><input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} required/></label>
-        <label className="field"><span>SEO description</span><input value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} required/></label>
-        <label className="field"><span>Cover URL или /media/ path</span><input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} required/></label>
-        <label className="field"><span>Alt обложки</span><input value={coverAlt} onChange={(e) => setCoverAlt(e.target.value)} required/></label>
-        <label className="field admin-field-wide"><span>Источник лицензии</span><input value={coverLicense} onChange={(e) => setCoverLicense(e.target.value)} required/></label>
-        <div className="admin-cover-preview admin-field-wide">
-          <div className="admin-cover-preview-image">
-            {coverUrl.trim() && (coverUrl.startsWith('/') || coverUrl.startsWith('https://') || coverUrl.startsWith('http://')) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={coverUrl} alt={coverAlt || 'Предпросмотр обложки квеста'} />
-            ) : <span>Q</span>}
-          </div>
-          <div><p className="eyebrow">LIVE PREVIEW</p><strong>{title || 'Название будущего квеста'}</strong><p>{summary || 'Краткое описание появится здесь.'}</p><small>{coverAlt || 'Alt-текст обложки не задан'} · {coverLicense || 'Источник лицензии не указан'}</small></div>
+    {(canAuthor || editor?.mode === 'review') && <section id="admin-editor" className="admin-panel">
+      <div className="admin-section-title">
+        <div>
+          <p className="eyebrow">04 / CONTENT STUDIO</p>
+          <h2>{editor?.mode === 'review' ? 'Проверка версии' : editor?.mode === 'edit' ? 'Редактирование черновика' : 'Редактор квестов'}</h2>
+          <p className="admin-section-description">Создавай уровни, задания, варианты ответов и подсказки без ручного редактирования JSON.</p>
         </div>
-        <label className="field admin-field-wide"><span>Уровни / головоломки (JSON)</span><textarea className="admin-json-editor" rows={18} spellCheck={false} value={levelsJson} onChange={(e) => setLevelsJson(e.target.value)} required/></label>
-        <button className="button button-primary" disabled={busy || !categoryId} type="submit">Сохранить черновик</button>
-      </form>
+        {canAuthor && <button className="button button-primary" type="button" onClick={() => setEditor({ mode: 'new' })}>Новый квест</button>}
+      </div>
+      {editorLoading && <p className="admin-empty" aria-live="polite">Загружаем версию…</p>}
+      {!editorLoading && editor && <QuestEditor
+        key={editor.mode + '-' + (editor.quest?.id ?? 'new')}
+        categories={categories}
+        skills={skillOptions}
+        initialQuest={editor.quest}
+        readOnly={editor.mode === 'review'}
+        lockSlug={editor.mode === 'edit' && editor.quest?.status === 'PUBLISHED'}
+        saving={busy}
+        onSave={editor.mode === 'review' ? undefined : saveQuest}
+        onCancel={() => setEditor(null)}
+      />}
     </section>}
 
     {canReview && <section id="admin-audit" className="admin-panel admin-audit-panel">
