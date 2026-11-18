@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { getPuzzleTypeCopy } from '../lib/play-utils.mjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -52,7 +53,8 @@ export function PlayClient({ runId }: { runId: string }) {
   const [visibleHints, setVisibleHints] = useState(0);
   const attemptIdRef = useRef<string | null>(null);
 
-  const loadRun = useCallback(async () => {
+  const loadRun = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const response = await fetch(`/api/v1/runs/${runId}`, {
@@ -162,6 +164,11 @@ export function PlayClient({ runId }: { runId: string }) {
     }
   }
 
+  function handlePuzzleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitAnswer();
+  }
+
   function toggleOption(optionId: string) {
     setSelectedOptions((current) => current.includes(optionId)
       ? current.filter((id) => id !== optionId)
@@ -203,7 +210,20 @@ export function PlayClient({ runId }: { runId: string }) {
   }
 
   if (loading) {
-    return <main className="play-page"><p className="muted-copy">Загружаем твою миссию…</p></main>;
+    return (
+      <main className="play-page">
+        <Link className="brand game-brand" href="/">
+          <span className="brand-mark">Q</span><span>questoria</span>
+        </Link>
+        <section className="game-card game-loading-card" aria-busy="true" aria-live="polite">
+          <span className="game-loading-mark" aria-hidden="true">✦</span>
+          <p className="eyebrow">ГОТОВИМ ПРИКЛЮЧЕНИЕ</p>
+          <h1>Загружаем твою миссию…</h1>
+          <div className="game-loading-line" aria-hidden="true"><span /></div>
+          <p className="muted-copy">Загрузка задания и твоего сохранённого прогресса</p>
+        </section>
+      </main>
+    );
   }
 
   if (!run) {
@@ -213,8 +233,8 @@ export function PlayClient({ runId }: { runId: string }) {
           <p className="eyebrow">НЕ УДАЛОСЬ ЗАГРУЗИТЬ</p>
           <h1>Миссия пока недоступна</h1>
           <p>{error || 'Проверь подключение и попробуй ещё раз.'}</p>
-          <button className="button button-primary" onClick={() => void loadRun()} type="button">
-            Повторить
+          <button className="button button-primary" onClick={() => void loadRun(true)} type="button">
+            Повторить загрузку
           </button>
         </section>
       </main>
@@ -228,13 +248,13 @@ export function PlayClient({ runId }: { runId: string }) {
           <span className="brand-mark">Q</span><span>questoria</span>
         </Link>
         <section className="result-card">
-          <div className="result-symbol">{run.result?.success ? '✦' : '↻'}</div>
-          <p className="eyebrow">{run.result?.success ? 'МИССИЯ ВЫПОЛНЕНА' : 'ПОПЫТКИ ЗАВЕРШЕНЫ'}</p>
-          <h1>{run.result?.success ? 'Отличная работа!' : 'Это часть исследования'}</h1>
+          <div className="result-symbol" aria-hidden="true">{run.result?.success ? '✦' : '↻'}</div>
+          <p className="eyebrow">{run.result?.success ? 'МИССИЯ ВЫПОЛНЕНА' : run.status === 'ABANDONED' ? 'ПРОХОЖДЕНИЕ ОСТАНОВЛЕНО' : 'ПОПЫТКА ЗАВЕРШЕНА'}</p>
+          <h1>{run.result?.success ? 'Отличная работа!' : 'Исследование продолжается'}</h1>
           <p className="muted-copy">
             {run.result?.success
-              ? 'Ты нашёл закономерность и открыл шифрованную дверь.'
-              : 'Не каждую загадку удаётся решить с первого раза. Теперь ты знаешь, на что обратить внимание.'}
+              ? `Ты завершил миссию «${run.quest.title}». Результат и заслуженные награды сохранены в профиле.`
+              : `Прохождение миссии «${run.quest.title}» завершено. Ошибки помогают понять, что стоит попробовать иначе. Выбери новую попытку или другую миссию.`}
           </p>
           <div className="result-stats">
             <div><strong>{run.result?.score ?? 0}</strong><span>баллов</span></div>
@@ -278,7 +298,7 @@ export function PlayClient({ runId }: { runId: string }) {
       </header>
       <div className="game-progress game-progress-header">
         <div><span>МИССИЯ · {run.quest.category.toUpperCase()}</span><strong>{run.progress.percent}%</strong></div>
-        <div className="game-progress-track" role="progressbar" aria-valuenow={run.progress.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс миссии"><span style={{ width: `${run.progress.percent}%` }} /></div>
+        <div className="game-progress-track" role="progressbar" aria-valuenow={run.progress.percent} aria-valuemin={0} aria-valuemax={100} aria-valuetext={`${run.progress.completedPuzzles} из ${run.progress.totalPuzzles} заданий`} aria-label="Прогресс миссии"><span style={{ width: `${run.progress.percent}%` }} /></div>
         <small>Задание {Math.min(run.progress.completedPuzzles + 1, run.progress.totalPuzzles)} из {run.progress.totalPuzzles} · этап {run.currentLevel?.orderNo ?? 1}</small>
       </div>
       <section className="game-card">
@@ -286,22 +306,26 @@ export function PlayClient({ runId }: { runId: string }) {
         <h1>{run.currentLevel?.title ?? 'Продолжение миссии'}</h1>
         <p className="game-intro">{run.currentLevel?.intro ?? run.quest.summary}</p>
         {puzzle ? (
-          <div className="puzzle-panel">
+          <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting}>
             <div className="puzzle-counter">
-              <span>{puzzle.type.replaceAll('_', ' ').toUpperCase()}</span>
-              <span>Осталось попыток: {puzzle.attemptsRemaining}</span>
+              <span>{getPuzzleTypeCopy(puzzle.type).label}</span>
+              <span>Попыток осталось: {puzzle.attemptsRemaining} из {puzzle.maxAttempts}</span>
             </div>
-            <h2>{puzzle.prompt}</h2>
+            <h2 id="current-puzzle-prompt">{puzzle.prompt}</h2>
+            <p className="game-puzzle-guidance">{getPuzzleTypeCopy(puzzle.type).instruction}</p>
+            {!['single_choice', 'multiple_choice', 'numeric_input', 'text_input', 'ordering'].includes(puzzle.type) && (
+              <div className="feedback feedback-error" role="alert">Этот формат задания пока не поддерживается. Вернись в каталог и выбери другую миссию.</div>
+            )}
 
             {puzzle.type === 'single_choice' && (
-              <div className="answer-options" role="radiogroup" aria-label="Варианты ответа">
+              <div className="answer-options" role="group" aria-label="Варианты ответа">
                 {puzzle.options.map((option) => (
                   <button
                     className={selectedOption === option.id ? 'answer-option selected' : 'answer-option'}
                     key={option.id}
                     onClick={() => setSelectedOption(option.id)}
-                    role="radio"
-                    aria-checked={selectedOption === option.id}
+                    aria-pressed={selectedOption === option.id}
+                    disabled={submitting}
                     type="button"
                   >
                     <span className="radio-indicator" />
@@ -312,13 +336,14 @@ export function PlayClient({ runId }: { runId: string }) {
             )}
 
             {puzzle.type === 'multiple_choice' && (
-              <div className="answer-options" aria-label="Выбери все подходящие варианты">
+              <div className="answer-options" role="group" aria-label="Выбери все подходящие варианты">
                 {puzzle.options.map((option) => (
                   <label className="answer-checkbox" key={option.id}>
                     <input
                       type="checkbox"
                       checked={selectedOptions.includes(option.id)}
                       onChange={() => toggleOption(option.id)}
+                      disabled={submitting}
                     />
                     <span>{option.label}</span>
                   </label>
@@ -334,6 +359,8 @@ export function PlayClient({ runId }: { runId: string }) {
                   type="text"
                   inputMode="decimal"
                   maxLength={64}
+                  required
+                  disabled={submitting}
                   value={inputAnswer}
                   placeholder={puzzle.placeholder ?? 'Введи число'}
                   onChange={(event) => setInputAnswer(event.target.value)}
@@ -348,6 +375,8 @@ export function PlayClient({ runId }: { runId: string }) {
                   className="answer-input"
                   type="text"
                   maxLength={2000}
+                  required
+                  disabled={submitting}
                   value={inputAnswer}
                   placeholder={puzzle.placeholder ?? 'Введи ответ'}
                   onChange={(event) => setInputAnswer(event.target.value)}
@@ -366,7 +395,7 @@ export function PlayClient({ runId }: { runId: string }) {
                         className="order-move-button"
                         type="button"
                         aria-label={`Переместить ${item.label} выше`}
-                        disabled={index === 0}
+                        disabled={index === 0 || submitting}
                         onClick={() => moveItem(index, -1)}
                       >
                         ↑
@@ -375,7 +404,7 @@ export function PlayClient({ runId }: { runId: string }) {
                         className="order-move-button"
                         type="button"
                         aria-label={`Переместить ${item.label} ниже`}
-                        disabled={index === orderedItems.length - 1}
+                        disabled={index === orderedItems.length - 1 || submitting}
                         onClick={() => moveItem(index, 1)}
                       >
                         ↓
@@ -387,33 +416,39 @@ export function PlayClient({ runId }: { runId: string }) {
             )}
 
             {puzzle.latestAttempt && (
-              <div className={puzzle.latestAttempt.isCorrect ? 'feedback feedback-success' : 'feedback feedback-error'}>
-                {puzzle.latestAttempt.feedback}
+              <div
+                className={puzzle.latestAttempt.isCorrect ? 'feedback feedback-success' : 'feedback feedback-error'}
+                role="status"
+                aria-live="polite"
+              >
+                <strong>{puzzle.latestAttempt.isCorrect ? 'Верно!' : 'Попробуй ещё раз'}</strong>
+                <span>{puzzle.latestAttempt.feedback}</span>
               </div>
             )}
             {visibleHints > 0 && (
-              <div className="hint-panel" aria-live="polite">
+              <div className="hint-panel" role="status" aria-live="polite">
                 <strong>Подсказка {visibleHints} из {puzzle.hints.length}</strong>
                 {puzzle.hints.slice(0, visibleHints).map((hint, index) => <p key={index}>{hint}</p>)}
               </div>
             )}
             <div className="game-actions">
-              <button className="button button-secondary" disabled={puzzle.hints.length === 0 || visibleHints >= puzzle.hints.length} onClick={() => setVisibleHints((value) => Math.min(value + 1, puzzle.hints.length))} type="button">
+              <button className="button button-secondary" disabled={submitting || puzzle.hints.length === 0 || visibleHints >= puzzle.hints.length} onClick={() => setVisibleHints((value) => Math.min(value + 1, puzzle.hints.length))} type="button">
                 {visibleHints >= puzzle.hints.length ? 'Все подсказки открыты' : visibleHints ? 'Следующая подсказка' : 'Получить подсказку'}
               </button>
               <button
                 className="button button-primary"
                 disabled={!canSubmit() || submitting || puzzle.attemptsRemaining === 0}
-                onClick={submitAnswer}
-                type="button"
+                type="submit"
               >
                 {submitting ? 'Проверяем…' : 'Проверить ответ'}
               </button>
             </div>
-          </div>
+          </form>
         ) : (
-          <div className="feedback feedback-error">
-            Не удалось определить активное задание. Обнови страницу или вернись в каталог.
+          <div className="feedback feedback-error" role="alert">
+            <strong>Не удалось определить активное задание.</strong>
+            <span>Обнови данные прохождения. Твой серверный прогресс останется сохранённым.</span>
+            <button className="button button-secondary" onClick={() => void loadRun(true)} type="button">Обновить задание</button>
           </div>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
