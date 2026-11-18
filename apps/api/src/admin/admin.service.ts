@@ -14,6 +14,7 @@ import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } fr
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
 import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
 import { AUDIT_LOG_EXPORT_LIMIT, buildAuditLogWhere, type AuditLogFilters } from './audit-log.query.js';
+import { canManageQuestDraft, canViewAllQuestVersions } from './cms-authorization.js';
 
 const EDITABLE_STATUSES = ['DRAFT'] as const;
 
@@ -122,12 +123,15 @@ export class AdminService {
     });
   }
 
-  async listQuests(): Promise<object[]> {
+  async listQuests(user: AuthenticatedUser): Promise<object[]> {
+    const authorOnly = !canViewAllQuestVersions(user);
     const quests = await this.prisma.quest.findMany({
+      where: authorOnly ? { versions: { some: { authorId: user.userId } } } : {},
       orderBy: { updatedAt: 'desc' },
       include: {
         category: { select: { title: true, slug: true } },
         versions: {
+          where: authorOnly ? { authorId: user.userId } : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           select: { id: true, versionNo: true, title: true, status: true, updatedAt: true },
@@ -143,12 +147,17 @@ export class AdminService {
     }));
   }
 
-  async getQuest(id: string): Promise<object> {
-    const quest = await this.prisma.quest.findUnique({
-      where: { id },
+  async getQuest(user: AuthenticatedUser, id: string): Promise<object> {
+    const authorOnly = !canViewAllQuestVersions(user);
+    const quest = await this.prisma.quest.findFirst({
+      where: {
+        id,
+        ...(authorOnly ? { versions: { some: { authorId: user.userId } } } : {}),
+      },
       include: {
         category: true,
         versions: {
+          where: authorOnly ? { authorId: user.userId } : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
           include: {
@@ -225,6 +234,9 @@ export class AdminService {
     });
     if (!version) {
       throw new ConflictException('Create a new draft version before editing this quest.');
+    }
+    if (!canManageQuestDraft(user, version.authorId)) {
+      throw new ForbiddenException('You can only edit your own draft. Ask an administrator to reassign the draft.');
     }
 
     if (dto.categoryId) {
@@ -375,6 +387,9 @@ export class AdminService {
 
   async submitForReview(user: AuthenticatedUser, id: string): Promise<object> {
     const version = await this.getLatestDraftVersion(id);
+    if (!canManageQuestDraft(user, version.authorId)) {
+      throw new ForbiddenException('Only the draft author or an administrator can submit this version for review.');
+    }
     const readiness = await this.checkPublishReadiness(version);
     if (readiness.errors.length) {
       throw new BadRequestException({ message: 'Quest is not ready for review.', errors: readiness.errors });
