@@ -163,28 +163,28 @@ test('review exposes the configured solution only through the explicit review bu
       correctOptionId: 'b',
       correctFeedback: explanation,
     }),
-    { explanation, correctAnswer: { optionId: 'b' } },
+    { explanation, correctAnswer: { optionId: 'b' }, correctAnswerText: 'Второй' },
   );
   assert.deepEqual(
     buildPuzzleReview('multiple_choice', publicOptions, {
       correctOptionIds: ['a', 'c'],
       correctFeedback: explanation,
     }),
-    { explanation, correctAnswer: { optionIds: ['a', 'c'] } },
+    { explanation, correctAnswer: { optionIds: ['a', 'c'] }, correctAnswerText: 'Первый, Третий' },
   );
   assert.deepEqual(
-    buildPuzzleReview('numeric_input', {}, {
+    buildPuzzleReview('numeric_input', { unit: 'см' }, {
       correctValue: 12.5,
       correctFeedback: explanation,
     }),
-    { explanation, correctAnswer: { value: 12.5 } },
+    { explanation, correctAnswer: { value: 12.5 }, correctAnswerText: '12.5 см' },
   );
   assert.deepEqual(
     buildPuzzleReview('text_input', {}, {
       acceptedAnswers: ['ответ', 'верный ответ'],
       correctFeedback: explanation,
     }),
-    { explanation, correctAnswer: { acceptedAnswers: ['ответ', 'верный ответ'] } },
+    { explanation, correctAnswer: { acceptedAnswers: ['ответ', 'верный ответ'] }, correctAnswerText: 'ответ / верный ответ' },
   );
   assert.deepEqual(
     buildPuzzleReview('ordering', {
@@ -193,7 +193,7 @@ test('review exposes the configured solution only through the explicit review bu
       correctOrderIds: ['two', 'one'],
       correctFeedback: explanation,
     }),
-    { explanation, correctAnswer: { orderedIds: ['two', 'one'] } },
+    { explanation, correctAnswer: { orderedIds: ['two', 'one'] }, correctAnswerText: '2 → 1' },
   );
 });
 
