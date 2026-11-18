@@ -6,7 +6,15 @@ import { QuestEditor, type CmsQuestDetail, type CmsSkillOption, type QuestEditor
 
 type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled: boolean; sessionMfaVerified: boolean };
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
-type Quest = { id: string; slug: string; status: string; canEditDraft: boolean; category: { title: string; slug: string }; latestVersion: { versionNo: number; title: string; status: string } | null };
+type QuestAuthor = { email: string; nickname: string | null };
+type Quest = {
+  id: string; slug: string; status: string; canEditDraft: boolean;
+  category: { title: string; slug: string };
+  latestVersion: {
+    versionNo: number; title: string; status: string; updatedAt: string;
+    author?: QuestAuthor | null;
+  } | null;
+};
 type Audit = {
   id: string; action: string; entityType: string; entityId: string;
   reason: string | null; beforeJson: unknown; afterJson: unknown;
@@ -68,6 +76,9 @@ export function AdminClient() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
+  const [questSearch, setQuestSearch] = useState('');
+  const [questStatusFilter, setQuestStatusFilter] = useState('');
+  const [questAuthorFilter, setQuestAuthorFilter] = useState('');
   const [audit, setAudit] = useState<Audit[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditSkip, setAuditSkip] = useState(0);
@@ -461,6 +472,31 @@ export function AdminClient() {
   const canReview = has(identity, 'REVIEWER', 'ADMIN', 'SUPER_ADMIN');
   const canPublish = isAdmin;
   const isSuperAdmin = has(identity, 'SUPER_ADMIN');
+  const questAuthors = [...new Map(quests
+    .map((quest) => quest.latestVersion?.author)
+    .filter((author): author is QuestAuthor => author != null)
+    .map((author) => [author.email, author])).entries()]
+    .map(([email, author]) => ({ email, label: author.nickname || email }));
+  const visibleQuests = quests
+    .filter((quest) => {
+      const status = quest.latestVersion?.status ?? quest.status;
+      const term = questSearch.trim().toLocaleLowerCase('ru-RU');
+      const matchesSearch = !term || [quest.slug, quest.latestVersion?.title ?? '', quest.category.title]
+        .some((value) => value.toLocaleLowerCase('ru-RU').includes(term));
+      return matchesSearch
+        && (!questStatusFilter || status === questStatusFilter)
+        && (!questAuthorFilter || quest.latestVersion?.author?.email === questAuthorFilter);
+    })
+    .sort((left, right) => {
+      const rank: Record<string, number> = { REVIEW: 0, DRAFT: 1, APPROVED: 2, PUBLISHED: 3, ARCHIVED: 4 };
+      const leftStatus = left.latestVersion?.status ?? left.status;
+      const rightStatus = right.latestVersion?.status ?? right.status;
+      const priority = (rank[leftStatus] ?? 5) - (rank[rightStatus] ?? 5);
+      if (priority) return priority;
+      const leftDate = new Date(left.latestVersion?.updatedAt ?? 0).getTime();
+      const rightDate = new Date(right.latestVersion?.updatedAt ?? 0).getTime();
+      return leftStatus === 'REVIEW' ? leftDate - rightDate : rightDate - leftDate;
+    });
   const visibleManagedUsers = managedUsers.filter((user) => {
     const term = userSearch.trim().toLocaleLowerCase('ru-RU');
     return !term || user.email.toLocaleLowerCase('ru-RU').includes(term)
@@ -639,8 +675,26 @@ export function AdminClient() {
 
     <section id="admin-quests" className="admin-panel">
       <div className="admin-section-title"><div><p className="eyebrow">03 / QUEST LIBRARY</p><h2>Квесты и версии</h2></div><span className="admin-count">{quests.length}</span></div>
-      <div className="admin-list">{quests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
-        <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span></div>
+      <div className="admin-form admin-audit-filters" aria-label="Фильтры редакционной очереди">
+        <label className="field admin-audit-search"><span>Поиск по квестам</span>
+          <input type="search" value={questSearch} onChange={(event) => setQuestSearch(event.target.value)} placeholder="Название, slug или рубрика"/>
+        </label>
+        <label className="field"><span>Статус</span>
+          <select value={questStatusFilter} onChange={(event) => setQuestStatusFilter(event.target.value)}>
+            <option value="">Все статусы</option><option value="REVIEW">На рецензии</option><option value="DRAFT">Черновики</option><option value="APPROVED">Одобрены</option><option value="PUBLISHED">Опубликованы</option><option value="ARCHIVED">Архив</option>
+          </select>
+        </label>
+        {canReview && <label className="field"><span>Автор</span>
+          <select value={questAuthorFilter} onChange={(event) => setQuestAuthorFilter(event.target.value)}>
+            <option value="">Все авторы</option>{questAuthors.map((author) => <option key={author.email} value={author.email}>{author.label}</option>)}
+          </select>
+        </label>}
+        <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые долго ожидающие.</p>
+      </div>
+      <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
+        <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
+          {canReview && quest.latestVersion?.author && <small className="muted-copy">Автор: {quest.latestVersion.author.nickname || quest.latestVersion.author.email} · обновлено {new Date(quest.latestVersion.updatedAt).toLocaleString('ru-RU')}</small>}
+        </div>
         <div className="admin-row-actions"><span className={`admin-status status-${status.toLowerCase()}`}>{status}</span>
           {status === 'PUBLISHED' && canAuthor && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Новая версия</button>}
           {status === 'DRAFT' && quest.canEditDraft && <button className="button button-small button-secondary" disabled={busy} onClick={() => void openQuestEditor(quest, 'edit')} type="button">Открыть редактор</button>}
@@ -649,7 +703,7 @@ export function AdminClient() {
           {status === 'REVIEW' && canReview && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Одобрить</button>}
           {status === 'APPROVED' && canPublish && <button className="button button-small button-primary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Опубликовать</button>}
         </div>
-      </article>; })}{!quests.length && <p className="admin-empty">Квестов пока нет.</p>}</div>
+      </article>; })}{!visibleQuests.length && <p className="admin-empty">{quests.length ? 'По выбранным фильтрам квесты не найдены.' : 'Квестов пока нет.'}</p>}</div>
     </section>
 
     {(canAuthor || editor?.mode === 'review') && <section id="admin-editor" className="admin-panel">

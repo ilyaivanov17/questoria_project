@@ -154,7 +154,10 @@ export class AdminService {
             : {},
           orderBy: { versionNo: 'desc' },
           take: 1,
-          select: { id: true, versionNo: true, title: true, status: true, updatedAt: true, authorId: true },
+          select: {
+            id: true, versionNo: true, title: true, status: true, updatedAt: true, authorId: true,
+            author: { select: { emailNormalized: true, profile: { select: { nickname: true } } } },
+          },
         },
       },
     });
@@ -174,6 +177,14 @@ export class AdminService {
           title: quest.versions[0].title,
           status: quest.versions[0].status,
           updatedAt: quest.versions[0].updatedAt,
+          ...(authorOnly ? {} : {
+            author: quest.versions[0].author
+              ? {
+                email: quest.versions[0].author.emailNormalized,
+                nickname: quest.versions[0].author.profile?.nickname ?? null,
+              }
+              : null,
+          }),
         }
         : null,
     }));
