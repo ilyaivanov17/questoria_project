@@ -9,7 +9,6 @@ import {
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
-import type { PlayerAchievement } from '@questoria/contracts';
 import { AchievementService } from './achievement.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ProfileService } from './profile.service.js';
