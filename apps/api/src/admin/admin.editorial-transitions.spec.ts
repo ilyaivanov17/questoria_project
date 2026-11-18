@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -21,6 +21,13 @@ const publisher: AuthenticatedUser = {
   userId: 'admin-1',
   email: 'admin@example.test',
   roleKeys: ['ADMIN'],
+};
+
+const author: AuthenticatedUser = {
+  ...reviewer,
+  userId: 'author-1',
+  email: 'author@example.test',
+  roleKeys: ['AUTHOR'],
 };
 
 function makeTransactionService(tx: unknown): AdminService {
@@ -135,6 +142,83 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
   assert.deepEqual(questUpdate?.data, { status: 'PUBLISHED' });
   assert.equal((result as { status: string }).status, 'PUBLISHED');
   assert.equal(auditCount, 1);
+});
+
+
+test('draft editing re-checks ownership after locking and re-reading the current version', async () => {
+  const original = {
+    id: 'version-1',
+    questId: 'quest-1',
+    versionNo: 3,
+    status: 'DRAFT',
+    authorId: 'author-1',
+    ageMin: 14,
+    ageMax: 99,
+  };
+  const reassigned = { ...original, authorId: 'author-2' };
+  let txWrites = 0;
+  const tx = {
+    $queryRaw: async () => [{ id: 'version-1' }],
+    questVersion: {
+      findFirst: async () => reassigned,
+      update: async () => { txWrites += 1; return {}; },
+    },
+    quest: {
+      update: async () => { txWrites += 1; return {}; },
+    },
+  };
+  const prisma = {
+    quest: { findUnique: async () => ({ id: 'quest-1' }) },
+    questVersion: {
+      findFirst: async (query: { where?: { status?: string } }) => (
+        query.where?.status ? original : { ageMin: 14, ageMax: 99 }
+      ),
+    },
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  await assert.rejects(
+    () => service.updateQuest(author, 'quest-1', {}),
+    ForbiddenException,
+  );
+  assert.equal(txWrites, 0);
+});
+
+test('draft submission re-checks ownership after locking and re-reading the current version', async () => {
+  const original = {
+    id: 'version-1',
+    questId: 'quest-1',
+    versionNo: 3,
+    status: 'DRAFT',
+    authorId: 'author-1',
+  };
+  const reassigned = { ...original, authorId: 'author-2' };
+  let readCount = 0;
+  let transitionCount = 0;
+  let auditCount = 0;
+  const tx = {
+    $queryRaw: async () => [{ id: 'version-1' }],
+    questVersion: {
+      findFirst: async () => {
+        readCount += 1;
+        return readCount === 1 ? original : reassigned;
+      },
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+      findUnique: async () => reassigned,
+    },
+    adminAuditLog: {
+      create: async () => { auditCount += 1; return {}; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.submitForReview(author, 'quest-1'),
+    ForbiddenException,
+  );
+  assert.equal(transitionCount, 0);
+  assert.equal(auditCount, 0);
 });
 
 test('a stale publication is rejected without changing quest status or writing audit', async () => {
