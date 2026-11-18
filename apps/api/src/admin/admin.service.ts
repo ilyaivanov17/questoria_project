@@ -156,9 +156,7 @@ export class AdminService {
           take: 1,
           select: {
             id: true, versionNo: true, title: true, status: true, updatedAt: true, authorId: true,
-            ...(authorOnly ? {} : {
-              author: { select: { emailNormalized: true, profile: { select: { nickname: true } } } },
-            }),
+            author: { select: { emailNormalized: true, profile: { select: { nickname: true } } } },
           },
         },
       },
