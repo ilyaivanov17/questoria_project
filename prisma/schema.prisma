@@ -422,6 +422,7 @@ model ProfileSkillProgress {
   distinctPuzzles       Int                @default(0) @map("distinct_puzzles")
   distinctQuestVersions Int                @default(0) @map("distinct_quest_versions")
   distinctQuests        Int                @default(0) @map("distinct_quests")
+  distinctRuns          Int                @default(0) @map("distinct_runs")
   distinctTaskTypes     Int                @default(0) @map("distinct_task_types")
   firstPracticedAt      DateTime           @default(now()) @map("first_practiced_at")
   lastPracticedAt       DateTime           @default(now()) @map("last_practiced_at")
