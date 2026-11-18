@@ -673,15 +673,17 @@ export class QuestService {
     }
 
     const unmetPrerequisites = [...requiredPrerequisiteIds]
-      .map((id) => skillsById.get(id))
-      .filter((skill) => skill && skill.progress[0]?.status !== 'MASTERED')
-      .map((skill) => ({
-        id: skill.id,
-        key: skill.key,
-        name: skill.name,
-        status: skill.progress[0]?.status.toLowerCase() ?? 'not_started',
-        mastered: false,
-      }))
+      .flatMap((id) => {
+        const skill = skillsById.get(id);
+        if (!skill || skill.progress[0]?.status === 'MASTERED') return [];
+        return [{
+          id: skill.id,
+          key: skill.key,
+          name: skill.name,
+          status: skill.progress[0]?.status.toLowerCase() ?? 'not_started',
+          mastered: false,
+        }];
+      })
       .sort((left, right) => left.name.localeCompare(right.name, 'ru'));
 
     if (unmetPrerequisites.length > 0) {
