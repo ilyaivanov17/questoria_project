@@ -288,7 +288,7 @@ export class AdminService {
         ? Math.round((progress.mastered / progress.learners) * 100)
         : null;
       const qualitySignals: string[] = [];
-      if (evidence.total < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
+      if (evidence.total > 0 && evidence.total < 10) qualitySignals.push('LOW_SAMPLE_SIZE');
       if (evidence.total >= 10 && successRate !== null && successRate < 40) {
         qualitySignals.push('LOW_SUCCESS_RATE');
       }
