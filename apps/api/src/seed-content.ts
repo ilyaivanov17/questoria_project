@@ -695,7 +695,7 @@ export async function seedLearningLibrary(client: PoolClient): Promise<void> {
         difficulty, duration_min, locale, seo, status, published_at,
         internal_name, description, skills)
        VALUES ($1, $2, 1, $3, $4, $5::jsonb, $6, $7, $8, $9, 'ru',
-        $10::jsonb, 'PUBLISHED', NOW(), $11, $12, $13)
+        $10::jsonb, 'DRAFT', NULL, $11, $12, $13)
        ON CONFLICT (quest_id, version_no) DO NOTHING
        RETURNING id`,
       [
