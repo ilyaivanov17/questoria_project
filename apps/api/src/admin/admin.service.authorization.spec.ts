@@ -113,6 +113,7 @@ test('quest list marks only drafts managed by the current author as editable', a
   assert.equal(result[0]?.canEditDraft, true);
   assert.equal(result[1]?.canEditDraft, false);
   assert.equal('authorId' in (result[0]?.latestVersion ?? {}), false);
+  assert.equal('author' in (result[0]?.latestVersion ?? {}), false);
 });
 
 test('REVIEWER quest detail retains private answers for the editorial inspection screen', async () => {
