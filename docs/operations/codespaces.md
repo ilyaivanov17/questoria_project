@@ -23,9 +23,9 @@ The frontend uses the repository's same-origin API proxy. Keep `API_INTERNAL_URL
 
 ## Safe setup and repeatability
 
-Run `bash scripts/codespaces-setup.sh` to repeat initial setup after a failed create. It is safe to re-run against the documented local database: it does not overwrite an existing `.env`, uses the committed lockfile in frozen mode when one exists, and verifies that `DATABASE_URL` targets only the local `questoria` database on port 5432 before running migrations or seed.
+Run `bash scripts/codespaces-setup.sh` to repeat initial setup after a failed create. It is safe to re-run against the documented local database: it does not overwrite an existing `.env`, installs the committed workspace lockfile in frozen mode, and verifies that `DATABASE_URL` targets only the local `questoria` database on port 5432 before running migrations or seed.
 
-If `pnpm-lock.yaml` is absent, the first install resolves the workspace ranges and creates a local lockfile. Review and commit that file in a dedicated dependency/toolchain change before switching CI to frozen installs; do not silently treat an unreviewed generated lockfile as authoritative.
+`pnpm-lock.yaml` is committed at the repository root and resolves the root workspace, API, web app and contracts package. Dependency updates must change the relevant manifest and lockfile together. Infrastructure CI checks `pnpm install --frozen-lockfile`; do not regenerate or commit a lockfile from an unreviewed dependency state.
 
 When a stopped Codespace starts again, `postStartCommand` starts the existing PostgreSQL Compose service and checks readiness. It does not reinstall dependencies, migrate, reseed or delete data. After pulling backend changes that add migrations, use:
 
