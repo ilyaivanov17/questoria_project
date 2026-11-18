@@ -480,12 +480,14 @@ export class AdminService {
         },
         qualitySignals,
       };
-    }).sort((left, right) => (
-      (left.successRate ?? 101) - (right.successRate ?? 101)
-      || left.questSlug?.localeCompare(right.questSlug ?? '') || 0
-      || (left.levelOrder ?? 0) - (right.levelOrder ?? 0)
-      || (left.puzzleOrder ?? 0) - (right.puzzleOrder ?? 0)
-    ));
+    }).sort((left, right) => {
+      const successRateOrder = (left.successRate ?? 101) - (right.successRate ?? 101);
+      if (successRateOrder !== 0) return successRateOrder;
+      const questOrder = (left.questSlug ?? '').localeCompare(right.questSlug ?? '');
+      if (questOrder !== 0) return questOrder;
+      const levelOrder = (left.levelOrder ?? 0) - (right.levelOrder ?? 0);
+      return levelOrder || (left.puzzleOrder ?? 0) - (right.puzzleOrder ?? 0);
+    });
 
     return {
       generatedAt: new Date().toISOString(),
