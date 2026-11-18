@@ -107,10 +107,14 @@ test('AUTHOR cannot edit another author\'s draft even when the route role permit
 });
 
 test('AUTHOR cannot submit another author\'s draft for review', async () => {
-  const prisma = {
+  const tx = {
+    $queryRaw: async () => [{ id: 'version-1' }],
     questVersion: {
       findFirst: async () => ({ id: 'version-1', authorId: 'author-2' }),
     },
+  };
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
   } as unknown as PrismaService;
   const service = new AdminService(prisma);
 
