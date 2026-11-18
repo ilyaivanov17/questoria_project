@@ -97,13 +97,14 @@ jobs:
               api_healthy=1
               break
             fi
-            if [[ "$api_status" == "exited" || "$api_status" == "dead" || "$api_status" == "missing" ]]; then
+            if [[ "$api_status" == "unhealthy" || "$api_status" == "exited" || "$api_status" == "dead" || "$api_status" == "missing" ]]; then
               break
             fi
             sleep 2
           done
           if [[ "$api_healthy" -ne 1 ]]; then
             echo "Production API did not become healthy (container state: $api_status)." >&2
+            docker inspect --format '{{json .State}}' "$api_id" || true
             "${production_compose[@]}" logs --no-color --tail=150 api
             exit 1
           fi
