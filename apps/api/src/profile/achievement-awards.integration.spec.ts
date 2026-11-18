@@ -12,7 +12,7 @@ test(
 
     const profileIds: string[] = [];
     let categoryId: string | undefined;
-    let questId: string | undefined;
+    const questIds: string[] = [];
 
     t.after(async () => {
       try {
@@ -28,20 +28,20 @@ test(
             await tx.questRun.deleteMany({ where: { profileId } });
           }
 
-          if (questId) {
+          if (questIds.length) {
             await tx.questVersion.updateMany({
-              where: { questId, status: 'PUBLISHED' },
+              where: { questId: { in: questIds }, status: 'PUBLISHED' },
               data: { status: 'ARCHIVED' },
             });
             await tx.hint.deleteMany({
-              where: { puzzle: { level: { questVersion: { questId } } } },
+              where: { puzzle: { level: { questVersion: { questId: { in: questIds } } } } },
             });
             await tx.puzzle.deleteMany({
-              where: { level: { questVersion: { questId } } },
+              where: { level: { questVersion: { questId: { in: questIds } } } },
             });
-            await tx.level.deleteMany({ where: { questVersion: { questId } } });
-            await tx.questVersion.deleteMany({ where: { questId } });
-            await tx.quest.deleteMany({ where: { id: questId } });
+            await tx.level.deleteMany({ where: { questVersion: { questId: { in: questIds } } } });
+            await tx.questVersion.deleteMany({ where: { questId: { in: questIds } } });
+            await tx.quest.deleteMany({ where: { id: { in: questIds } } });
           }
 
           if (categoryId) {
@@ -79,32 +79,33 @@ test(
     });
     categoryId = category.id;
 
-    const quest = await prisma.quest.create({
-      data: {
-        categoryId,
-        slug: `achievement-events-${fixtureId}`,
-        status: 'DRAFT',
-      },
-    });
-    questId = quest.id;
-
-    const versions = await Promise.all([1, 2, 3].map((versionNo) =>
-      prisma.questVersion.create({
+    const quests = await Promise.all([1, 2, 3].map((questNo) =>
+      prisma.quest.create({
         data: {
-          questId: quest.id,
-          versionNo,
-          title: `Achievement version ${versionNo}`,
-          summary: 'Temporary version for achievement milestones.',
-          objectives: ['Проверить выдачу достижений'],
-          ageMin: 14,
-          ageMax: 99,
-          difficulty: 'beginner',
-          durationMin: 3,
-          locale: 'ru',
+          categoryId,
+          slug: `achievement-events-${fixtureId}-${questNo}`,
           status: 'DRAFT',
+          versions: {
+            create: {
+              versionNo: 1,
+              title: `Achievement quest ${questNo}`,
+              summary: 'Temporary quest for achievement milestones.',
+              objectives: ['Проверить выдачу достижений'],
+              ageMin: 14,
+              ageMax: 99,
+              difficulty: 'beginner',
+              durationMin: 3,
+              locale: 'ru',
+              status: 'DRAFT',
+            },
+          },
         },
+        include: { versions: { select: { id: true } } },
       }),
     ));
+    questIds.push(...quests.map((quest) => quest.id));
+    const versions = quests.map((quest) => quest.versions[0]);
+    assert.ok(versions.every(Boolean), 'three independent quests must each have a version');
 
     const levels = await Promise.all(Array.from({ length: 5 }, (_, index) =>
       prisma.level.create({
@@ -181,8 +182,8 @@ test(
     });
     assert.ok(awards.some((award) => award.achievement.code === 'five-levels'));
 
-    // Completion records are per unique published version. The first one
-    // grants first-quest; the third distinct version grants three-quests.
+    // Completion receipts are per published version, but "three-quests"
+    // counts three different root quests rather than three versions of one quest.
     await prisma.questCompletion.create({
       data: {
         profileId,
