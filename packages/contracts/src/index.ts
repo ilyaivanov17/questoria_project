@@ -315,3 +315,28 @@ export interface PlayerSkillReviewQueueResponse {
     totalCount: number;
   };
 }
+
+
+export interface PublicQuestDemoPreviewResponse {
+  slug: string;
+  questTitle: string;
+  puzzle: {
+    type: string;
+    prompt: string;
+    options: Array<{ id: string; label: string }>;
+    items: Array<{ id: string; label: string }>;
+    placeholder: string | null;
+    unit: string | null;
+    hints: string[];
+  };
+}
+
+export interface PublicQuestDemoAttemptResponse {
+  result: 'correct' | 'incorrect';
+  feedback: string;
+  progressSaved: false;
+  rewards: {
+    xp: 0;
+    coins: 0;
+  };
+}

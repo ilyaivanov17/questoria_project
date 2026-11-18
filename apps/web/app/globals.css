@@ -3258,3 +3258,179 @@ summary:focus-visible {
     transform: none;
   }
 }
+
+
+/* Anonymous sample challenge on the public quest detail page */
+.guest-demo {
+  margin-top: 32px;
+  padding: 22px;
+  border: 1px solid #e3e0f5;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f6f4ff, #ffffff 72%);
+}
+
+.guest-demo-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.guest-demo-heading .eyebrow {
+  margin-bottom: 8px;
+}
+
+.guest-demo-heading h2 {
+  margin: 0;
+  font-size: clamp(19px, 2.2vw, 23px);
+  letter-spacing: -0.65px;
+}
+
+.guest-demo-heading p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.guest-demo-heading .button {
+  flex: 0 0 auto;
+}
+
+.guest-demo-collapse,
+.guest-demo-retry,
+.guest-demo-hint-button {
+  border: 0;
+  background: transparent;
+  color: var(--purple);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.guest-demo-collapse {
+  flex: 0 0 auto;
+}
+
+.guest-demo-body {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e7e4f4;
+}
+
+.guest-demo-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.guest-demo-body > h3 {
+  margin: 18px 0 8px;
+  font-size: 21px;
+  line-height: 1.45;
+}
+
+.guest-demo-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.guest-demo-form .answer-options {
+  display: grid;
+  gap: 10px;
+}
+
+.guest-demo-form .answer-input-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.guest-demo-form .answer-input-label {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.guest-demo-form .answer-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid #dfe1eb;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.guest-demo-form .answer-input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.guest-demo-hint-area {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+}
+
+.guest-demo-hint-area .hint-panel {
+  width: 100%;
+  margin-top: 0;
+}
+
+.guest-demo-submit {
+  justify-self: start;
+}
+
+.guest-demo-disclaimer {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.guest-demo-success {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.guest-demo-success p {
+  margin: 0;
+  color: #236b51;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.guest-demo-retry {
+  display: inline-block;
+  margin-left: 10px;
+}
+
+.guest-demo-collapse:focus-visible,
+.guest-demo-retry:focus-visible,
+.guest-demo-hint-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .guest-demo {
+    padding: 17px;
+  }
+
+  .guest-demo-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .guest-demo-heading .button {
+    width: 100%;
+  }
+
+  .guest-demo-submit {
+    width: 100%;
+  }
+}

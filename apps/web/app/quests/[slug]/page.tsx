@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { GuestDemo } from '../../../components/guest-demo';
 import { StartQuestButton } from '../../../components/start-quest-button';
 
 interface PublicQuest {
@@ -44,6 +45,7 @@ export default async function QuestDetailPage({ params }: { params: Promise<{ sl
           <div className="objectives"><h2>Чему ты научишься</h2><ul>{quest.objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul></div>
           {quest.skills?.length ? <div className="quest-skills" aria-label="Навыки">{quest.skills.map((skill) => <span key={skill}>{skill.replaceAll('-', ' ')}</span>)}</div> : null}
           <StartQuestButton slug={quest.slug} /><p className="small-note">Войди в аккаунт, чтобы сохранять прохождение и возвращаться к нему позже.</p>
+          <GuestDemo slug={quest.slug} />
         </div>
         <aside className="quest-detail-aside">
           <div className="quest-detail-cover">

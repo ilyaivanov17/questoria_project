@@ -168,7 +168,26 @@ assert.ok(categories.body.some((category) =>
   category.quests.some((quest) => quest.slug === demoQuestSlug),
 ));
 
-const publicQuest = await request(`/api/v1/public/quests/${demoQuestSlug}`);
+const guestPreview = await request('/api/v1/public/quests/' + demoQuestSlug + '/preview');
+assert.equal(guestPreview.response.status, 200);
+assert.equal(guestPreview.body?.puzzle?.type, expectedAnswers[0].type);
+const guestPreviewJson = JSON.stringify(guestPreview.body);
+assert.equal(guestPreviewJson.includes('correctOptionId'), false, 'guest preview leaked the private answer');
+assert.equal(guestPreviewJson.includes('solutionPrivate'), false, 'guest preview leaked the private solution');
+const guestAnswer = await request(
+  '/api/v1/public/quests/' + demoQuestSlug + '/preview/attempts',
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: expectedAnswers[0].answer }),
+  },
+);
+assert.equal(guestAnswer.response.status, 201, 'guest demo must be playable without a session');
+assert.equal(guestAnswer.body?.result, 'correct');
+assert.equal(guestAnswer.body?.progressSaved, false);
+assert.deepEqual(guestAnswer.body?.rewards, { xp: 0, coins: 0 });
+
+const publicQuest = await request('/api/v1/public/quests/' + demoQuestSlug);
 assert.equal(publicQuest.response.status, 200);
 const publicQuestJson = JSON.stringify(publicQuest.body);
 assert.equal(publicQuestJson.includes('correctOptionId'), false, 'public quest payload leaked the answer');
