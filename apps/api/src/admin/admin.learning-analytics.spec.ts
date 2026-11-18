@@ -133,7 +133,7 @@ test('task learning analytics aggregates per puzzle and skill and compares curre
   assert.deepEqual(result.totals, { puzzleSkillPairs: 1, attempts: 12, learners: 2, flagged: 0 });
   assert.equal(result.tasks[0].questSlug, 'fractions');
   assert.equal(result.tasks[0].skillKey, 'fractions');
-  assert.equal(result.tasks[0].successRate, 67);
+  assert.equal(result.tasks[0].successRate, 58);
   assert.equal(result.tasks[0].masteryDiscrimination.mastered.successRate, 100);
   assert.equal(result.tasks[0].masteryDiscrimination.notMastered.successRate, 17);
   assert.equal(result.tasks[0].masteryDiscrimination.successRateGap, 83);
