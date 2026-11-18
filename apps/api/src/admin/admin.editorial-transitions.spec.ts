@@ -179,7 +179,7 @@ test('draft editing re-checks ownership after locking and re-reading the current
   const service = new AdminService(prisma);
 
   await assert.rejects(
-    () => service.updateQuest(author, 'quest-1', {}),
+    () => service.updateQuest(author, 'quest-1', {} as never),
     ForbiddenException,
   );
   assert.equal(txWrites, 0);
