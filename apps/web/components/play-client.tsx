@@ -311,7 +311,7 @@ export function PlayClient({ runId }: { runId: string }) {
         <h1>{run.currentLevel?.title ?? 'Продолжение миссии'}</h1>
         <p className="game-intro">{run.currentLevel?.intro ?? run.quest.summary}</p>
         {puzzle ? (
-          <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting} aria-labelledby="current-puzzle-prompt">
+          <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting} aria-labelledby="current-puzzle-prompt" aria-describedby="current-puzzle-guidance">
             <div className="puzzle-counter">
               <span>{getPuzzleTypeCopy(puzzle.type).label}</span>
               <span>Попыток осталось: {puzzle.attemptsRemaining} из {puzzle.maxAttempts}</span>
