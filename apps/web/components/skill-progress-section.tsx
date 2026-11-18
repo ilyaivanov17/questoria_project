@@ -31,6 +31,15 @@ export interface PlayerSkillItem {
   firstPracticedAt: string | null;
   lastPracticedAt: string | null;
   masteredAt: string | null;
+  trend: {
+    direction: 'insufficient_data' | 'improving' | 'stable' | 'declining';
+    recentAttempts: number;
+    recentSuccessful: number;
+    recentSuccessRate: number | null;
+    previousAttempts: number;
+    previousSuccessful: number;
+    previousSuccessRate: number | null;
+  };
   recommendedQuests: Array<{
     slug: string;
     title: string;
@@ -61,7 +70,24 @@ export interface PlayerSkillsResponse {
     totalSkills: number;
     practicedSkills: number;
     masteredSkills: number;
+    trendTrackedSkills: number;
+    improvingSkills: number;
+    stableSkills: number;
+    decliningSkills: number;
   };
+}
+
+interface SkillReviewItem {
+  skillId: string;
+  state: 'due' | 'upcoming';
+  intervalDays: number;
+  daysOverdue: number;
+  recommendedQuests: Array<{
+    slug: string;
+    title: string;
+    difficulty: string | null;
+    durationMin: number;
+  }>;
 }
 
 function formatDate(value: string): string {
@@ -74,9 +100,11 @@ function formatDate(value: string): string {
 export function SkillProgressSection({
   data,
   error,
+  reviewItems = [],
 }: {
   data: PlayerSkillsResponse | null;
   error: string;
+  reviewItems?: SkillReviewItem[];
 }) {
   return (
     <section className="profile-section skill-progress-section" id="skills" aria-labelledby="skill-progress-heading">
@@ -93,12 +121,38 @@ export function SkillProgressSection({
 
       {error ? <p className="form-error" role="status">{error}</p> : null}
 
+      {data && data.summary.trendTrackedSkills > 0 ? (
+        <p className="skill-trend-summary">
+          Динамика по навыкам: растут — {data.summary.improvingSkills}, стабильны — {data.summary.stableSkills},
+          требуют внимания — {data.summary.decliningSkills}
+        </p>
+      ) : null}
+
       {data?.skills.length ? (
         <div className="skill-progress-grid">
           {data.skills.map((skill) => {
             const accuracy = skill.attemptsCount > 0
               ? Math.round((skill.successfulAttempts / skill.attemptsCount) * 100)
               : 0;
+            const dueReview = reviewItems.find((item) => (
+              item.skillId === skill.id && item.state === 'due'
+            ));
+            const isDeclining = skill.trend.direction === 'declining';
+            const nextStepTitle = dueReview
+              ? 'Пора повторить'
+              : isDeclining
+                ? 'Закрепи тему'
+                : skill.status === 'mastered'
+                  ? 'Следующий уровень'
+                  : 'Продолжай практику';
+            const nextStepReason = dueReview
+              ? `По графику отложенного повторения срок проверки наступил${dueReview.daysOverdue > 0 ? ` ${dueReview.daysOverdue} дн. назад` : ' сегодня'} (интервал ${dueReview.intervalDays} дн.).`
+              : isDeclining && skill.trend.recentSuccessRate !== null && skill.trend.previousSuccessRate !== null
+                ? `В последних ${skill.trend.recentAttempts} ответах верно ${skill.trend.recentSuccessRate}% против ${skill.trend.previousSuccessRate}% в предыдущих ${skill.trend.previousAttempts}. Стоит закрепить тему.`
+                : skill.status === 'mastered'
+                  ? 'Навык освоен. Можно перейти к миссиям следующей сложности.'
+                  : 'Продолжай практику на текущем уровне: для перехода дальше нужны успешные решения разных задач и форматов.';
+            const nextStepQuests = dueReview?.recommendedQuests ?? skill.recommendedQuests;
             return (
               <article className="skill-progress-card" key={skill.id}>
                 <div className="skill-card-heading">
@@ -132,16 +186,50 @@ export function SkillProgressSection({
                       <span>{skill.distinctTaskTypes} форматов</span>
                       <span>{skill.distinctQuests} миссий</span>
                     </div>
+                    <div className="skill-trend-panel">
+                      <div className="skill-trend-heading">
+                        <strong>Динамика ответов</strong>
+                        <span className={`skill-trend-state skill-trend-${skill.trend.direction}`}>
+                          {skill.trend.direction === 'improving'
+                            ? 'Растёт'
+                            : skill.trend.direction === 'stable'
+                              ? 'Стабильно'
+                              : skill.trend.direction === 'declining'
+                                ? 'Снизилась'
+                                : 'Собираем данные'}
+                        </span>
+                      </div>
+                      <div className="skill-trend-window">
+                        <span>Последние {skill.trend.recentAttempts}</span>
+                        <div className="skill-trend-track" role="img" aria-label={`Верно ${skill.trend.recentSuccessRate ?? 0}% в последних ответах`}>
+                          <span style={{ width: `${skill.trend.recentSuccessRate ?? 0}%` }} />
+                        </div>
+                        <strong>{skill.trend.recentSuccessRate === null ? '—' : `${skill.trend.recentSuccessRate}%`}</strong>
+                      </div>
+                      {skill.trend.previousAttempts > 0 ? (
+                        <div className="skill-trend-window">
+                          <span>До этого {skill.trend.previousAttempts}</span>
+                          <div className="skill-trend-track" role="img" aria-label={`Верно ${skill.trend.previousSuccessRate ?? 0}% в предыдущих ответах`}>
+                            <span style={{ width: `${skill.trend.previousSuccessRate ?? 0}%` }} />
+                          </div>
+                          <strong>{skill.trend.previousSuccessRate === null ? '—' : `${skill.trend.previousSuccessRate}%`}</strong>
+                        </div>
+                      ) : null}
+                      {skill.trend.direction === 'insufficient_data' ? (
+                        <small>Для сравнения нужны два полных окна по пять ответов.</small>
+                      ) : null}
+                    </div>
                   </>
                 ) : (
                   <p className="skill-not-started">Осваивай навык в доступных миссиях — история появится после первых ответов.</p>
                 )}
-                {skill.available && skill.status !== 'mastered' ? (
-                  <div className="skill-next-step">
-                    <span className="skill-next-step-label">Следующий шаг</span>
-                    {skill.recommendedQuests.length ? (
+                {skill.available ? (
+                  <div className={`skill-next-step skill-next-step-${dueReview ? 'review' : isDeclining ? 'reinforce' : skill.status === 'mastered' ? 'advance' : 'practice'}`}>
+                    <span className="skill-next-step-label">{nextStepTitle}</span>
+                    <p className="skill-next-step-reason">{nextStepReason}</p>
+                    {nextStepQuests.length ? (
                       <div className="skill-next-step-links">
-                        {skill.recommendedQuests.slice(0, 2).map((quest) => (
+                        {nextStepQuests.slice(0, 2).map((quest) => (
                           <Link
                             className="skill-next-step-link"
                             href={`/quests/${encodeURIComponent(quest.slug)}`}
@@ -155,6 +243,10 @@ export function SkillProgressSection({
                           </Link>
                         ))}
                       </div>
+                    ) : dueReview ? (
+                      <Link className="review-compact-link" href="/review">Открыть план повторения →</Link>
+                    ) : skill.status === 'mastered' ? (
+                      <p className="skill-not-started">Опубликованной миссии следующей сложности пока нет.</p>
                     ) : (
                       <p className="skill-not-started">Подходящая опубликованная миссия пока не найдена.</p>
                     )}

@@ -289,7 +289,11 @@ export function ProfileClient() {
       </section>
 
       <ReviewQueuePreview data={reviewQueue} error={reviewQueueError} />
-      <SkillProgressSection data={skillsData} error={skillsError} />
+      <SkillProgressSection
+        data={skillsData}
+        error={skillsError}
+        reviewItems={reviewQueue?.items ?? []}
+      />
 
       <section className="profile-section achievement-section">
         <div className="profile-section-heading">

@@ -8,6 +8,7 @@ import type {
   PlayerSkillReviewQueueResponse,
 } from '@questoria/contracts';
 import { calculateSkillReviewSchedule } from './review-schedule.js';
+import { calculateSkillLearningTrend } from './learning-insights.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
@@ -16,7 +17,7 @@ export class SkillService {
 
   async getSkills(profileId: string): Promise<PlayerSkillsResponse> {
     const snapshot = await this.prisma.$transaction(async (tx) => {
-      const [definitions, recentEvidence, publishedVersions] = await Promise.all([
+      const [definitions, recentEvidence, publishedVersions, trendEvidence] = await Promise.all([
         tx.skill.findMany({
           orderBy: { name: 'asc' },
           select: {
@@ -100,14 +101,50 @@ export class SkillService {
             quest: { select: { slug: true } },
           },
         }),
+        tx.$queryRaw<Array<{ skillId: string; isCorrect: boolean }>>`
+          SELECT "skill_id" AS "skillId", "is_correct" AS "isCorrect"
+          FROM (
+            SELECT
+              "skill_id",
+              "is_correct",
+              ROW_NUMBER() OVER (
+                PARTITION BY "skill_id"
+                ORDER BY "occurred_at" DESC, "id" DESC
+              ) AS "rowNo"
+            FROM "learning_evidence"
+            WHERE "profile_id" = ${profileId}::uuid
+          ) AS recent
+          WHERE "rowNo" <= 10
+          ORDER BY "skill_id", "rowNo" ASC
+        `,
       ]);
 
-      return { definitions, recentEvidence, publishedVersions };
+      return { definitions, recentEvidence, publishedVersions, trendEvidence };
     }, { isolationLevel: 'RepeatableRead' });
 
     const definitionsById = new Map(snapshot.definitions.map((definition) => [definition.id, definition]));
     const aliases = new Map<string, string[]>();
+    const trendEvidenceBySkill = new Map<string, Array<{ isCorrect: boolean }>>();
+    for (const evidence of snapshot.trendEvidence) {
+      const events = trendEvidenceBySkill.get(evidence.skillId) ?? [];
+      events.push({ isCorrect: evidence.isCorrect });
+      trendEvidenceBySkill.set(evidence.skillId, events);
+    }
+    const learningTrendBySkill = new Map(
+      snapshot.definitions.map((definition) => [
+        definition.id,
+        calculateSkillLearningTrend(trendEvidenceBySkill.get(definition.id) ?? []),
+      ]),
+    );
     const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
+    const difficultyRank = (value: string | null): number | null => {
+      switch (value?.trim().toLowerCase()) {
+        case 'beginner': return 0;
+        case 'intermediate': return 1;
+        case 'advanced': return 2;
+        default: return null;
+      }
+    };
 
     for (const definition of snapshot.definitions) {
       for (const alias of [definition.key, definition.name]) {
@@ -153,24 +190,35 @@ export class SkillService {
 
     for (const definition of snapshot.definitions) {
       const isMastered = definition.progress[0]?.status === 'MASTERED';
-      const recommendations = isMastered || !prerequisitesAreMastered(definition.id)
+      const learningTrend = learningTrendBySkill.get(definition.id)!;
+      const shouldAdvance = isMastered && learningTrend.direction !== 'declining';
+      const currentDifficulty = difficultyRank(definition.difficulty);
+      const recommendations = !prerequisitesAreMastered(definition.id)
         ? []
         : snapshot.publishedVersions
           .filter((version) => {
             const targetSkills = resolveQuestSkills(version.skills);
-            return Boolean(
-              targetSkills
-              && targetSkills.includes(definition.id)
-              && targetSkills.every((skillId) => prerequisitesAreMastered(skillId)),
-            );
+            if (
+              !targetSkills
+              || !targetSkills.includes(definition.id)
+              || !targetSkills.every((skillId) => prerequisitesAreMastered(skillId))
+            ) return false;
+
+            const questDifficulty = difficultyRank(version.difficulty);
+            if (currentDifficulty === null || questDifficulty === null) return !shouldAdvance;
+            // Only a mastered skill with a stable or improving recent trend
+            // unlocks the next tier. A declining trend stays on the current tier.
+            return shouldAdvance
+              ? questDifficulty === currentDifficulty + 1
+              : questDifficulty <= currentDifficulty;
           })
           .sort((left, right) => {
-            const leftMatchesDifficulty = definition.difficulty !== null
-              && left.difficulty === definition.difficulty;
-            const rightMatchesDifficulty = definition.difficulty !== null
-              && right.difficulty === definition.difficulty;
-            return Number(rightMatchesDifficulty) - Number(leftMatchesDifficulty)
-              || left.title.localeCompare(right.title, 'ru');
+            const leftRank = difficultyRank(left.difficulty) ?? -1;
+            const rightRank = difficultyRank(right.difficulty) ?? -1;
+            const rankOrder = shouldAdvance
+              ? leftRank - rightRank
+              : rightRank - leftRank;
+            return rankOrder || left.title.localeCompare(right.title, 'ru');
           })
           .reduce<PlayerSkillProgress['recommendedQuests']>((result, version) => {
             if (result.some((quest) => quest.slug === version.quest.slug)) return result;
@@ -218,6 +266,7 @@ export class SkillService {
         firstPracticedAt: progress?.firstPracticedAt?.toISOString() ?? null,
         lastPracticedAt: progress?.lastPracticedAt?.toISOString() ?? null,
         masteredAt: progress?.masteredAt?.toISOString() ?? null,
+        trend: learningTrendBySkill.get(definition.id)!,
         recommendedQuests: recommendedQuestsBySkill.get(definition.id) ?? [],
       };
     });
@@ -244,6 +293,10 @@ export class SkillService {
         totalSkills: skills.length,
         practicedSkills: skills.filter((skill) => skill.attemptsCount > 0).length,
         masteredSkills: skills.filter((skill) => skill.status === 'mastered').length,
+        trendTrackedSkills: skills.filter((skill) => skill.trend.direction !== 'insufficient_data').length,
+        improvingSkills: skills.filter((skill) => skill.trend.direction === 'improving').length,
+        stableSkills: skills.filter((skill) => skill.trend.direction === 'stable').length,
+        decliningSkills: skills.filter((skill) => skill.trend.direction === 'declining').length,
       },
     };
   }

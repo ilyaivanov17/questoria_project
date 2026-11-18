@@ -6,7 +6,20 @@ import { SkillService } from './skill.service.js';
 const profileId = '11111111-1111-4111-8111-111111111111';
 const now = new Date('2026-11-18T10:00:00.000Z');
 
-function createService() {
+function createService(
+  trendEvidence: Array<{ skillId: string; isCorrect: boolean }> = [
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: false },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: true },
+    { skillId: 'skill-1', isCorrect: false },
+  ],
+) {
   const transactionOptions: Array<{ isolationLevel?: string }> = [];
   const tx = {
     skill: {
@@ -20,8 +33,8 @@ function createService() {
           prerequisites: [],
           progress: [{
             status: 'MASTERED',
-            attemptsCount: 7,
-            successfulAttempts: 5,
+            attemptsCount: 10,
+            successfulAttempts: 6,
             distinctPuzzles: 4,
             distinctQuestVersions: 2,
             distinctQuests: 2,
@@ -69,6 +82,20 @@ function createService() {
     questVersion: {
       findMany: async () => [
         {
+          title: 'Продвинутые логические задачи',
+          difficulty: 'advanced',
+          durationMin: 16,
+          skills: ['critical-thinking'],
+          quest: { slug: 'critical-thinking-advanced' },
+        },
+        {
+          title: 'Практика критического мышления',
+          difficulty: 'intermediate',
+          durationMin: 11,
+          skills: ['critical-thinking'],
+          quest: { slug: 'critical-thinking-practice' },
+        },
+        {
           title: 'Продвинутые числовые закономерности',
           difficulty: 'advanced',
           durationMin: 12,
@@ -91,6 +118,7 @@ function createService() {
         },
       ],
     },
+    $queryRaw: async () => trendEvidence,
     learningEvidence: {
       findMany: async () => [{
         id: 'evidence-1',
@@ -133,6 +161,10 @@ test('returns mastery, evidence counts and a separate not-started state from one
     totalSkills: 3,
     practicedSkills: 1,
     masteredSkills: 1,
+    trendTrackedSkills: 1,
+    improvingSkills: 0,
+    stableSkills: 0,
+    decliningSkills: 1,
   });
   assert.deepEqual(result.skills[0], {
     id: 'skill-1',
@@ -143,8 +175,8 @@ test('returns mastery, evidence counts and a separate not-started state from one
     status: 'mastered',
     available: true,
     prerequisites: [],
-    attemptsCount: 7,
-    successfulAttempts: 5,
+    attemptsCount: 10,
+    successfulAttempts: 6,
     distinctPuzzles: 4,
     distinctQuestVersions: 2,
     distinctQuests: 2,
@@ -153,7 +185,21 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: '2026-11-15T10:00:00.000Z',
     lastPracticedAt: now.toISOString(),
     masteredAt: now.toISOString(),
-    recommendedQuests: [],
+    trend: {
+      direction: 'declining',
+      recentAttempts: 5,
+      recentSuccessful: 2,
+      recentSuccessRate: 40,
+      previousAttempts: 5,
+      previousSuccessful: 4,
+      previousSuccessRate: 80,
+    },
+    recommendedQuests: [{
+      slug: 'critical-thinking-practice',
+      title: 'Практика критического мышления',
+      difficulty: 'intermediate',
+      durationMin: 11,
+    }],
   });
   assert.deepEqual(result.skills[1], {
     id: 'skill-2',
@@ -180,16 +226,20 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    trend: {
+      direction: 'insufficient_data',
+      recentAttempts: 0,
+      recentSuccessful: 0,
+      recentSuccessRate: null,
+      previousAttempts: 0,
+      previousSuccessful: 0,
+      previousSuccessRate: null,
+    },
     recommendedQuests: [{
       slug: 'number-patterns-basics',
       title: 'Основы числовых закономерностей',
       difficulty: 'beginner',
       durationMin: 7,
-    }, {
-      slug: 'number-patterns-advanced',
-      title: 'Продвинутые числовые закономерности',
-      difficulty: 'advanced',
-      durationMin: 12,
     }],
   });
   assert.deepEqual(result.skills[2], {
@@ -217,6 +267,15 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    trend: {
+      direction: 'insufficient_data',
+      recentAttempts: 0,
+      recentSuccessful: 0,
+      recentSuccessRate: null,
+      previousAttempts: 0,
+      previousSuccessful: 0,
+      previousSuccessRate: null,
+    },
     recommendedQuests: [],
   });
   assert.deepEqual(result.recentEvidence, [{
@@ -232,5 +291,24 @@ test('returns mastery, evidence counts and a separate not-started state from one
     questSlug: 'logic-mission',
     levelTitle: 'Найди закономерность',
     puzzleOrder: 2,
+  }]);
+});
+
+test('recommends the next difficulty tier after mastery when the trend is not declining', async () => {
+  const improvingEvidence = [
+    true, true, true, true, false,
+    true, false, false, false, false,
+  ].map((isCorrect) => ({ skillId: 'skill-1', isCorrect }));
+  const { service } = createService(improvingEvidence);
+
+  const result = await service.getSkills(profileId);
+
+  assert.equal(result.skills[0]?.status, 'mastered');
+  assert.equal(result.skills[0]?.trend.direction, 'improving');
+  assert.deepEqual(result.skills[0]?.recommendedQuests, [{
+    slug: 'critical-thinking-advanced',
+    title: 'Продвинутые логические задачи',
+    difficulty: 'advanced',
+    durationMin: 16,
   }]);
 });
