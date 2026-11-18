@@ -47,15 +47,21 @@ test('AUTHOR quest list and detail queries are scoped to versions authored by th
   );
 
   assert.deepEqual(listQuery?.where, {
-    versions: { some: { authorId: author.userId } },
+    OR: [
+      { status: 'PUBLISHED' },
+      { versions: { some: { authorId: author.userId } } },
+    ],
   });
   assert.deepEqual(
     (listQuery?.include as { versions: { where: unknown } }).versions.where,
-    { authorId: author.userId },
+    { OR: [{ authorId: author.userId }, { status: 'PUBLISHED' }] },
   );
   assert.deepEqual(detailQuery?.where, {
     id: 'other-quest',
-    versions: { some: { authorId: author.userId } },
+    OR: [
+      { status: 'PUBLISHED' },
+      { versions: { some: { authorId: author.userId } } },
+    ],
   });
 });
 
@@ -112,4 +118,41 @@ test('AUTHOR cannot submit another author\'s draft for review', async () => {
     () => service.submitForReview(author, 'quest-1'),
     ForbiddenException,
   );
+});
+
+
+test('AUTHOR can use a published quest as a template but never receives its private solution', async () => {
+  const prisma = {
+    quest: {
+      findFirst: async () => ({
+        id: 'published-quest',
+        versions: [{
+          id: 'published-version',
+          authorId: 'another-author',
+          status: 'PUBLISHED',
+          levels: [{
+            id: 'level-1',
+            puzzles: [{
+              id: 'puzzle-1',
+              publicPayload: { prompt: 'Question' },
+              solutionPrivate: { correctOptionId: 'secret-option' },
+              hints: [],
+            }],
+          }],
+        }],
+      }),
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const detail = await service.getQuest(author, 'published-quest') as {
+    versions: Array<{
+      levels: Array<{
+        puzzles: Array<Record<string, unknown>>;
+      }>;
+    }>;
+  };
+  const puzzle = detail.versions[0]!.levels[0]!.puzzles[0]!;
+  assert.equal('solutionPrivate' in puzzle, false);
+  assert.equal(JSON.stringify(detail).includes('secret-option'), false);
 });
