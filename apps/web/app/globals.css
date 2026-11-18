@@ -567,6 +567,7 @@ a { color: inherit; text-decoration: none; }
   .auth-page, .play-page { padding: 20px 16px 42px; }
   .auth-card, .game-card, .result-card { padding: 24px; }
   .puzzle-panel { padding: 18px; }
+  .puzzle-review-panel { padding: 15px; }
   .game-topbar { margin-bottom: 34px; }
   .game-actions { align-items: stretch; flex-direction: column; }
   .game-actions .button { width: 100%; }
@@ -946,6 +947,27 @@ a { color: inherit; text-decoration: none; }
 .answer-option, .answer-checkbox, .ordering-row { transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
 .answer-option:hover, .answer-checkbox:hover { border-color: #aaa0f1; transform: translateY(-1px); }
 .hint-panel { border: 1px solid #e2ddff; animation: panel-enter 180ms ease both; }
+.puzzle-review-panel {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #d9d2ff;
+  border-radius: 16px;
+  background: #f7f5ff;
+  text-align: left;
+  animation: panel-enter 180ms ease both;
+}
+.puzzle-review-panel .eyebrow { margin: 0; }
+.puzzle-review-panel h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+.puzzle-review-panel p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.puzzle-review-answer {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid #e2ddff;
+}
+.puzzle-review-answer strong { color: var(--text); font-size: 12px; }
 .hint-panel p { margin: 7px 0 0; }
 .admin-cover-preview { display: grid; grid-template-columns: 150px 1fr; gap: 17px; align-items: center; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fafaff; }
 .admin-cover-preview-image { position: relative; display: grid; min-height: 105px; place-items: center; overflow: hidden; border-radius: 12px; background: linear-gradient(135deg, #ebe8ff, #f7eddf 55%, #e3f1ec); color: var(--purple); font-size: 38px; font-weight: 800; }
