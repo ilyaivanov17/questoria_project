@@ -16,6 +16,7 @@ import { AuthGuard } from '../auth/auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
+import { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
 import { CreateQuestDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { AssignUserRoleDto, RemoveUserRoleDto, RevokeUserSessionDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
@@ -67,6 +68,41 @@ export class AdminContentController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<object> {
     return this.admin.publishCategory(request.authUser as AuthenticatedUser, id);
+  }
+
+  @Get('skills')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  listSkills(): Promise<object[]> {
+    return this.admin.listSkills();
+  }
+
+  @Get('analytics/learning')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  getLearningAnalytics(): Promise<object> {
+    return this.admin.getLearningAnalytics();
+  }
+
+
+  @Get('analytics/learning/tasks')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  getTaskLearningAnalytics(): Promise<object> {
+    return this.admin.getTaskLearningAnalytics();
+  }
+
+  @Post('skills')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  createSkill(@Req() request: Request, @Body() dto: CreateSkillDto): Promise<object> {
+    return this.admin.createSkill(request.authUser as AuthenticatedUser, dto);
+  }
+
+  @Patch('skills/:id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  updateSkill(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateSkillDto,
+  ): Promise<object> {
+    return this.admin.updateSkill(request.authUser as AuthenticatedUser, id, dto);
   }
 
   @Get('quests')

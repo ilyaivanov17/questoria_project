@@ -142,17 +142,25 @@ export class QuestService {
 
     if (!version) throw new NotFoundException('Quest not found.');
 
-    const existing = await this.prisma.questRun.findFirst({
-      where: {
-        profileId,
-        questVersionId: version.id,
-        status: 'IN_PROGRESS',
-      },
-      orderBy: { startedAt: 'desc' },
-    });
+    const run = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.questRun.findFirst({
+        where: {
+          profileId,
+          questVersionId: version.id,
+          status: 'IN_PROGRESS',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
 
-    const run = existing ?? await this.prisma.questRun.create({
-      data: { profileId, questVersionId: version.id },
+      // Do not strand a player who already started this quest if the CMS later
+      // adds prerequisites. Gate only creation of a new run.
+      if (existing) return existing;
+
+      await this.assertSkillPrerequisites(tx, profileId, version.skills);
+
+      return tx.questRun.create({
+        data: { profileId, questVersionId: version.id },
+      });
     });
 
     return this.getRun(profileId, run.id);
@@ -566,6 +574,138 @@ export class QuestService {
         throw new ConflictException('The attempt was processed concurrently. Retry with the same attemptId.');
       }
       throw error;
+    }
+  }
+
+  private async assertSkillPrerequisites(
+    tx: Prisma.TransactionClient,
+    profileId: string,
+    skillTags: string[],
+  ): Promise<void> {
+    const tags = [...new Set(skillTags.map((tag) => tag.trim()).filter(Boolean))];
+    if (tags.length === 0) return;
+
+    // CMS graph mutations lock the same rows FOR UPDATE in this stable order.
+    // Holding shared locks until the run is created closes the check/create race.
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "skills"
+      ORDER BY "id"
+      FOR SHARE
+    `;
+
+    const skills = await tx.skill.findMany({
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        prerequisites: { select: { prerequisiteId: true } },
+        progress: {
+          where: { profileId },
+          select: { status: true },
+          take: 1,
+        },
+      },
+    });
+
+    const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
+    const skillsById = new Map(skills.map((skill) => [skill.id, skill]));
+    const skillsByAlias = new Map<string, Array<(typeof skills)[number]>>();
+
+    for (const skill of skills) {
+      for (const alias of [skill.key, skill.name]) {
+        const normalizedAlias = normalize(alias);
+        const matches = skillsByAlias.get(normalizedAlias) ?? [];
+        matches.push(skill);
+        skillsByAlias.set(normalizedAlias, matches);
+      }
+    }
+
+    const targetSkillIds = new Set<string>();
+    const missingSkills: string[] = [];
+    const ambiguousSkills: string[] = [];
+
+    for (const tag of tags) {
+      const matches = [...new Map(
+        (skillsByAlias.get(normalize(tag)) ?? []).map((skill) => [skill.id, skill]),
+      ).values()];
+      if (matches.length === 0) {
+        missingSkills.push(tag);
+      } else if (matches.length > 1) {
+        ambiguousSkills.push(tag);
+      } else {
+        targetSkillIds.add(matches[0].id);
+      }
+    }
+
+    if (missingSkills.length > 0 || ambiguousSkills.length > 0) {
+      throw new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        code: 'SKILL_CATALOG_INCOMPLETE',
+        message: 'Published quest skills must resolve to exactly one catalog entry.',
+        missingSkills,
+        ambiguousSkills,
+      });
+    }
+
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const requiredPrerequisiteIds = new Set<string>();
+
+    const collectPrerequisites = (skillId: string): void => {
+      if (visiting.has(skillId)) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          code: 'SKILL_PREREQUISITE_GRAPH_INVALID',
+          message: 'The skill prerequisite graph contains a cycle.',
+        });
+      }
+      if (visited.has(skillId)) return;
+
+      const skill = skillsById.get(skillId);
+      if (!skill) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          code: 'SKILL_CATALOG_INCOMPLETE',
+          message: 'A prerequisite references a missing skill.',
+        });
+      }
+
+      visiting.add(skillId);
+      for (const edge of skill.prerequisites) {
+        requiredPrerequisiteIds.add(edge.prerequisiteId);
+        collectPrerequisites(edge.prerequisiteId);
+      }
+      visiting.delete(skillId);
+      visited.add(skillId);
+    };
+
+    for (const targetSkillId of targetSkillIds) {
+      collectPrerequisites(targetSkillId);
+    }
+
+    const unmetPrerequisites = [...requiredPrerequisiteIds]
+      .flatMap((id) => {
+        const skill = skillsById.get(id);
+        if (!skill || skill.progress[0]?.status === 'MASTERED') return [];
+        return [{
+          id: skill.id,
+          key: skill.key,
+          name: skill.name,
+          status: skill.progress[0]?.status.toLowerCase() ?? 'not_started',
+          mastered: false,
+        }];
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'));
+
+    if (unmetPrerequisites.length > 0) {
+      throw new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        code: 'SKILL_PREREQUISITES_NOT_MET',
+        message: 'Master the required skills before starting this quest.',
+        unmetPrerequisites,
+      });
     }
   }
 

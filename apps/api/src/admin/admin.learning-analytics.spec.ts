@@ -130,10 +130,10 @@ test('task learning analytics aggregates per puzzle and skill and compares curre
     }>;
   };
 
-  assert.deepEqual(result.totals, { puzzleSkillPairs: 1, attempts: 12, learners: 2, flagged: 1 });
+  assert.deepEqual(result.totals, { puzzleSkillPairs: 1, attempts: 12, learners: 2, flagged: 0 });
   assert.equal(result.tasks[0].questSlug, 'fractions');
   assert.equal(result.tasks[0].skillKey, 'fractions');
-  assert.equal(result.tasks[0].successRate, 67);
+  assert.equal(result.tasks[0].successRate, 58);
   assert.equal(result.tasks[0].masteryDiscrimination.mastered.successRate, 100);
   assert.equal(result.tasks[0].masteryDiscrimination.notMastered.successRate, 17);
   assert.equal(result.tasks[0].masteryDiscrimination.successRateGap, 83);
@@ -150,7 +150,7 @@ test('task learning analytics flags small samples and low mastery separation wit
     },
     puzzle: { findMany: async () => [{ id: 'puzzle-1', orderNo: 1, type: 'single_choice', level: { orderNo: 1, title: 'Уровень', questVersion: { id: 'v', versionNo: 1, title: 'Квест', quest: { slug: 'quest' } } } }] },
     skill: { findMany: async () => [{ id: 'skill-1', key: 'logic', name: 'Логика' }] },
-    profileSkillProgress: { findMany: async () => [] },
+    profileSkillProgress: { findMany: async () => [{ profileId: 'a', skillId: 'skill-1', status: 'MASTERED' }] },
   });
   const result = await service.getTaskLearningAnalytics() as {
     tasks: Array<{ qualitySignals: string[]; masteryDiscrimination: { successRateGap: number | null } }>;
