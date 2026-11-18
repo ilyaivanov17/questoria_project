@@ -143,6 +143,13 @@ jobs:
 
       - name: Stop production CI containers (preserve volumes)
         if: always()
+        env:
+          DATABASE_URL: postgresql://questoria:questoria_local_only@postgres:5432/questoria?schema=public
+          WEB_ORIGIN: https://questoria.example.invalid
+          NEXT_PUBLIC_SITE_URL: https://questoria.example.invalid
+          RESEND_API_KEY: ci-placeholder-not-a-real-secret
+          EMAIL_FROM: "Questoria <no-reply@example.invalid>"
+          MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         run: |
           docker compose -p questoria -f infra/docker/docker-compose.production.yml down --remove-orphans || true
           docker compose -p questoria -f infra/docker/docker-compose.yml down --remove-orphans || true
