@@ -2013,3 +2013,273 @@ summary:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* Gameplay and profile interaction polish */
+.game-loading-card {
+  min-height: 310px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+}
+
+.game-loading-card h1 {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 36px);
+}
+
+.game-loading-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  margin-bottom: 8px;
+  border-radius: 15px;
+  background: #efedff;
+  color: var(--purple);
+  font-size: 25px;
+}
+
+.game-loading-card .eyebrow {
+  margin: 0;
+}
+
+.game-loading-card .muted-copy {
+  margin: 0;
+  font-size: 13px;
+}
+
+.game-loading-line {
+  width: min(310px, 100%);
+  height: 7px;
+  margin: 10px 0 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #eeedf5;
+}
+
+.game-loading-line span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a49cf0, #655bd1);
+  animation: game-loading 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes game-loading {
+  from { transform: translateX(-15%); }
+  to { transform: translateX(145%); }
+}
+
+.puzzle-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.puzzle-panel h2 {
+  margin: 7px 0 0;
+}
+
+.game-puzzle-guidance {
+  margin: -6px 0 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.puzzle-counter {
+  align-items: center;
+}
+
+.puzzle-counter span:first-child {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #efedff;
+  color: #5149b7;
+}
+
+.puzzle-counter span:last-child {
+  color: #6b7082;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.puzzle-panel .feedback {
+  display: grid;
+  gap: 5px;
+}
+
+.puzzle-panel .feedback strong {
+  font-size: 13px;
+}
+
+.puzzle-panel .feedback span {
+  line-height: 1.6;
+}
+
+.answer-option:disabled,
+.answer-checkbox:has(input:disabled),
+.order-move-button:disabled {
+  cursor: not-allowed;
+  opacity: .68;
+}
+
+.answer-option:disabled:hover {
+  transform: none;
+}
+
+.order-move-button {
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 16px;
+}
+
+.order-move-button:disabled {
+  opacity: .4;
+}
+
+.puzzle-panel .game-actions {
+  align-items: center;
+  margin-top: 5px;
+}
+
+.puzzle-panel .game-actions .button {
+  min-width: 170px;
+}
+
+.profile-loading-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 52px 0 26px;
+}
+
+.profile-skeleton-avatar,
+.profile-skeleton-lines i,
+.profile-loading-grid span {
+  display: block;
+  border-radius: 14px;
+  background: linear-gradient(100deg, #efeff4 20%, #f8f8fb 42%, #efeff4 64%);
+  background-size: 220% 100%;
+  animation: profile-shimmer 1.5s ease-in-out infinite;
+}
+
+.profile-skeleton-avatar {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  border-radius: 22px;
+}
+
+.profile-skeleton-lines {
+  display: grid;
+  flex: 1;
+  gap: 11px;
+  max-width: 320px;
+}
+
+.profile-skeleton-lines i:first-child {
+  width: 68%;
+  height: 22px;
+}
+
+.profile-skeleton-lines i:last-child {
+  width: 92%;
+  height: 12px;
+}
+
+.profile-loading > .muted-copy {
+  font-size: 13px;
+}
+
+.profile-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  margin-top: 24px;
+}
+
+.profile-loading-grid span {
+  min-height: 145px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+@keyframes profile-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.profile-empty {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-empty h1 {
+  margin: 0;
+}
+
+.profile-empty .eyebrow {
+  margin-bottom: 0;
+}
+
+.profile-empty .muted-copy {
+  margin: 0 0 8px;
+}
+
+.achievement-section .achievement-grid {
+  margin-top: 2px;
+}
+
+.profile-section-heading .achievement-count {
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .game-loading-card {
+    min-height: 250px;
+  }
+
+  .puzzle-panel .game-actions {
+    align-items: stretch;
+  }
+
+  .puzzle-panel .game-actions .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .profile-loading-heading {
+    padding: 38px 0 22px;
+  }
+
+  .profile-loading-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-loading-grid span {
+    min-height: 105px;
+  }
+
+  .puzzle-counter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .puzzle-counter span:last-child {
+    padding-left: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-loading-line span,
+  .profile-skeleton-avatar,
+  .profile-skeleton-lines i,
+  .profile-loading-grid span {
+    animation: none;
+  }
+}
