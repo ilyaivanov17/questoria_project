@@ -10,6 +10,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import type { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
+import type { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
 import type { CreateQuestDto, LevelInputDto, PuzzleInputDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { validatePuzzleAnswer } from '../quests/puzzle-validator.js';
 import { isSelfManagement, wouldRemoveLastActiveSuperAdmin } from './user-management.policy.js';
@@ -21,6 +22,10 @@ type Transaction = Prisma.TransactionClient;
 
 function jsonInput(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function normalizeSkillKey(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\\s+/g, '-');
 }
 
 function puzzleAnswerForDefinition(type: string, solution: Record<string, unknown>): Record<string, unknown> {
