@@ -20,7 +20,7 @@ function createService(options: {
   tags?: string[];
   skills?: SkillFixture[];
   existingRun?: { id: string } | null;
-}) {
+} = {}) {
   const events: string[] = [];
   let createCount = 0;
   const tx = {
