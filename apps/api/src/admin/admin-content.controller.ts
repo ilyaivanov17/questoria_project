@@ -76,6 +76,12 @@ export class AdminContentController {
     return this.admin.listSkills();
   }
 
+  @Get('analytics/learning')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  getLearningAnalytics(): Promise<object> {
+    return this.admin.getLearningAnalytics();
+  }
+
   @Post('skills')
   @Roles('ADMIN', 'SUPER_ADMIN')
   createSkill(@Req() request: Request, @Body() dto: CreateSkillDto): Promise<object> {
