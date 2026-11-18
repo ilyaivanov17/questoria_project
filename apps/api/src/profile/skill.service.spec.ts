@@ -17,6 +17,7 @@ function createService() {
           name: 'Критическое мышление',
           description: 'Проверяй утверждения и находи закономерности.',
           difficulty: 'intermediate',
+          prerequisites: [],
           progress: [{
             status: 'MASTERED',
             attemptsCount: 7,
@@ -36,6 +37,30 @@ function createService() {
           name: 'Числовые закономерности',
           description: null,
           difficulty: null,
+          prerequisites: [{
+            prerequisite: {
+              id: 'skill-1',
+              key: 'critical-thinking',
+              name: 'Критическое мышление',
+              progress: [{ status: 'MASTERED' }],
+            },
+          }],
+          progress: [],
+        },
+        {
+          id: 'skill-3',
+          key: 'logic-puzzles',
+          name: 'Логические задачи',
+          description: null,
+          difficulty: null,
+          prerequisites: [{
+            prerequisite: {
+              id: 'skill-2',
+              key: 'number-patterns',
+              name: 'Числовые закономерности',
+              progress: [],
+            },
+          }],
           progress: [],
         },
       ],
@@ -79,7 +104,7 @@ test('returns mastery, evidence counts and a separate not-started state from one
 
   assert.deepEqual(transactionOptions, [{ isolationLevel: 'RepeatableRead' }]);
   assert.deepEqual(result.summary, {
-    totalSkills: 2,
+    totalSkills: 3,
     practicedSkills: 1,
     masteredSkills: 1,
   });
@@ -90,6 +115,8 @@ test('returns mastery, evidence counts and a separate not-started state from one
     description: 'Проверяй утверждения и находи закономерности.',
     difficulty: 'intermediate',
     status: 'mastered',
+    available: true,
+    prerequisites: [],
     attemptsCount: 7,
     successfulAttempts: 5,
     distinctPuzzles: 4,
@@ -107,6 +134,39 @@ test('returns mastery, evidence counts and a separate not-started state from one
     description: null,
     difficulty: null,
     status: 'not_started',
+    available: true,
+    prerequisites: [{
+      id: 'skill-1',
+      key: 'critical-thinking',
+      name: 'Критическое мышление',
+      status: 'mastered',
+      mastered: true,
+    }],
+    attemptsCount: 0,
+    successfulAttempts: 0,
+    distinctPuzzles: 0,
+    distinctQuestVersions: 0,
+    distinctQuests: 0,
+    distinctTaskTypes: 0,
+    firstPracticedAt: null,
+    lastPracticedAt: null,
+    masteredAt: null,
+  });
+  assert.deepEqual(result.skills[2], {
+    id: 'skill-3',
+    key: 'logic-puzzles',
+    name: 'Логические задачи',
+    description: null,
+    difficulty: null,
+    status: 'not_started',
+    available: false,
+    prerequisites: [{
+      id: 'skill-2',
+      key: 'number-patterns',
+      name: 'Числовые закономерности',
+      status: 'not_started',
+      mastered: false,
+    }],
     attemptsCount: 0,
     successfulAttempts: 0,
     distinctPuzzles: 0,
