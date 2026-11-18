@@ -6,12 +6,13 @@ import { QuestEditor, type CmsQuestDetail, type CmsSkillOption, type QuestEditor
 
 type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled: boolean; sessionMfaVerified: boolean };
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
+type QuestAuthor = { email: string; nickname: string | null };
 type Quest = {
   id: string; slug: string; status: string; canEditDraft: boolean;
   category: { title: string; slug: string };
   latestVersion: {
     versionNo: number; title: string; status: string; updatedAt: string;
-    author?: { email: string; nickname: string | null } | null;
+    author?: QuestAuthor | null;
   } | null;
 };
 type Audit = {
@@ -473,8 +474,8 @@ export function AdminClient() {
   const isSuperAdmin = has(identity, 'SUPER_ADMIN');
   const questAuthors = [...new Map(quests
     .map((quest) => quest.latestVersion?.author)
-    .filter((author): author is NonNullable<Quest['latestVersion']>['author'] => Boolean(author))
-    .map((author) => [author!.email, author!])).entries()]
+    .filter((author): author is QuestAuthor => author != null)
+    .map((author) => [author.email, author])).entries()]
     .map(([email, author]) => ({ email, label: author.nickname || email }));
   const visibleQuests = quests
     .filter((quest) => {
@@ -688,7 +689,7 @@ export function AdminClient() {
             <option value="">Все авторы</option>{questAuthors.map((author) => <option key={author.email} value={author.email}>{author.label}</option>)}
           </select>
         </label>}
-        <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые 오래 오래 ожидающие.</p>
+        <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые долго ожидающие.</p>
       </div>
       <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
         <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
