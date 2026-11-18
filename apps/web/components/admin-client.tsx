@@ -106,6 +106,7 @@ export function AdminClient() {
   const [skillOptions, setSkillOptions] = useState<CmsSkillOption[]>([]);
   const [editor, setEditor] = useState<{ mode: 'new' | 'edit' | 'review'; quest?: CmsQuestDetail } | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
+  const [reviewFeedback, setReviewFeedback] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -246,6 +247,7 @@ export function AdminClient() {
     setError('');
     try {
       const detail = await api<CmsQuestDetail>('/admin/quests/' + quest.id);
+      setReviewFeedback('');
       setEditor({ mode, quest: detail });
       document.getElementById('admin-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
@@ -266,6 +268,25 @@ export function AdminClient() {
     if (!result) return false;
     setEditor(null);
     return true;
+  }
+
+  async function requestQuestChanges(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const questId = editor?.mode === 'review' ? editor.quest?.id : undefined;
+    const feedback = reviewFeedback.trim();
+    if (!questId) return;
+    if (feedback.length < 10 || feedback.length > 2000) {
+      setError('Комментарий рецензента должен содержать от 10 до 2000 символов.');
+      return;
+    }
+    const result = await action(() => api('/admin/quests/' + questId + '/request-changes', {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }), 'Версия возвращена автору. Замечания сохранены в черновике и журнале аудита.');
+    if (result) {
+      setReviewFeedback('');
+      setEditor(null);
+    }
   }
 
   async function assignManagedRole(user: ManagedUser) {
@@ -652,6 +673,25 @@ export function AdminClient() {
         onSave={editor.mode === 'review' ? undefined : saveQuest}
         onCancel={() => setEditor(null)}
       />}
+      {editor?.mode === 'review' && <form className="admin-review-return-form" onSubmit={requestQuestChanges}>
+        <label className="field">
+          <span>Замечания автору (10–2000 символов)</span>
+          <textarea
+            rows={4}
+            minLength={10}
+            maxLength={2000}
+            required
+            value={reviewFeedback}
+            onChange={(event) => setReviewFeedback(event.target.value)}
+            placeholder="Укажи, что именно нужно исправить, и по возможности предложи направление улучшения."
+          />
+        </label>
+        <div className="admin-row-actions">
+          <button className="button button-danger" type="submit" disabled={busy || reviewFeedback.trim().length < 10}>
+            Вернуть автору на доработку
+          </button>
+        </div>
+      </form>}
     </section>}
 
     {canReview && <section id="admin-audit" className="admin-panel admin-audit-panel">

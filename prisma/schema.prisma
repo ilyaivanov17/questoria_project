@@ -224,6 +224,7 @@ model QuestVersion {
   coverLicenseSource String?     @map("cover_license_source")
   authorId String?               @db.Uuid @map("author_id")
   reviewerId String?             @db.Uuid @map("reviewer_id")
+  reviewFeedback String?             @map("review_feedback")
   approvedById String?           @db.Uuid @map("approved_by_id")
   publishedById String?          @db.Uuid @map("published_by_id")
   approvedAt DateTime?           @map("approved_at")

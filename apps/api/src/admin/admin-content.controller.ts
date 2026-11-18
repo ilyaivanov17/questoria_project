@@ -17,7 +17,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
-import { CreateQuestDto, UpdateQuestDto } from './dto/quest.dto.js';
+import { CreateQuestDto, RequestQuestChangesDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { AssignUserRoleDto, RemoveUserRoleDto, RevokeUserSessionDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
@@ -152,6 +152,16 @@ export class AdminContentController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<object> {
     return this.admin.submitForReview(request.authUser as AuthenticatedUser, id);
+  }
+
+  @Post('quests/:id/request-changes')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  requestQuestChanges(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RequestQuestChangesDto,
+  ): Promise<object> {
+    return this.admin.requestQuestChanges(request.authUser as AuthenticatedUser, id, dto.feedback);
   }
 
   @Post('quests/:id/approve')

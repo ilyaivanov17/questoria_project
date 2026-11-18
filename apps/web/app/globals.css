@@ -3473,3 +3473,10 @@ summary:focus-visible {
   .admin-skill-picker, .admin-answer-picker { grid-template-columns: 1fr; }
   .admin-editor-actions { align-items: stretch; flex-direction: column-reverse; }
 }
+
+.admin-review-feedback { display: grid; gap: 7px; padding: 15px 17px; border: 1px solid #e4d7b6; border-radius: 13px; background: #fffaf0; }
+.admin-review-feedback strong { font-size: 13px; }
+.admin-review-feedback p { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.admin-review-feedback small { color: var(--muted); font-size: 11px; }
+.admin-review-return-form { display: grid; gap: 12px; margin-top: 18px; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: #fbfbfe; }
+.admin-review-return-form .field { min-width: 0; }
