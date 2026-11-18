@@ -14,7 +14,16 @@ node -e '
 '
 
 EXPECTED_PNPM="$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
-corepack enable
+# The devcontainer connects as the unprivileged `node` user. Corepack's
+# pnpm shim is installed into /usr/local/bin, so create it with sudo once.
+if [[ "$(id -u)" -eq 0 ]]; then
+  corepack enable
+elif command -v sudo >/dev/null 2>&1; then
+  sudo corepack enable
+else
+  echo "Corepack shim setup needs root or sudo access." >&2
+  exit 1
+fi
 corepack prepare "pnpm@$EXPECTED_PNPM" --activate
 
 umask 077
