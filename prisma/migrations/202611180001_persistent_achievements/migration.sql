@@ -72,10 +72,11 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT COUNT(*)::INTEGER
+  SELECT COUNT(DISTINCT qv."quest_id")::INTEGER
     INTO completed_quest_count
-    FROM "quest_completions"
-    WHERE "profile_id" = target_profile_id;
+    FROM "quest_completions" qc
+    INNER JOIN "quest_versions" qv ON qv."id" = qc."quest_version_id"
+    WHERE qc."profile_id" = target_profile_id;
 
   SELECT COUNT(*)::INTEGER
     INTO completed_run_count
