@@ -185,7 +185,7 @@ export interface AdminTaskLearningAnalytics {
     successful: number;
     successRate: number | null;
     learners: number;
-    taskTypeCount: number;
+    evidenceTypeCount: number;
     masteryDiscrimination: {
       mastered: { attempts: number; learners: number; successRate: number | null };
       notMastered: { attempts: number; learners: number; successRate: number | null };
