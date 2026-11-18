@@ -87,4 +87,10 @@ export class ProfileController {
     const user = request.authUser as AuthenticatedUser;
     return this.skills.getSkills(user.profileId);
   }
+
+  @Get('review-queue')
+  getReviewQueue(@Req() request: Request) {
+    const user = request.authUser as AuthenticatedUser;
+    return this.skills.getReviewQueue(user.profileId);
+  }
 }

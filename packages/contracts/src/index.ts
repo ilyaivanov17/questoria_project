@@ -254,3 +254,35 @@ export interface PlayerAchievementsResponse {
   unlockedCount: number;
   totalCount: number;
 }
+
+export type PlayerSkillReviewState = 'due' | 'upcoming';
+
+export interface PlayerSkillReviewQuest {
+  slug: string;
+  title: string;
+  difficulty: string | null;
+  durationMin: number;
+}
+
+export interface PlayerSkillReviewItem {
+  skillId: string;
+  skillKey: string;
+  skillName: string;
+  skillStatus: PlayerSkillStatus;
+  lastCorrectAt: string;
+  dueAt: string;
+  intervalDays: number;
+  daysOverdue: number;
+  state: PlayerSkillReviewState;
+  recommendedQuests: PlayerSkillReviewQuest[];
+}
+
+export interface PlayerSkillReviewQueueResponse {
+  generatedAt: string;
+  items: PlayerSkillReviewItem[];
+  summary: {
+    dueCount: number;
+    upcomingCount: number;
+    totalCount: number;
+  };
+}
