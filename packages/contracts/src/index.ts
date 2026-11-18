@@ -118,3 +118,43 @@ export interface UpdateSkillRequest {
   difficulty?: 'beginner' | 'intermediate' | 'advanced' | null;
   prerequisiteIds?: string[];
 }
+
+
+export interface AdminLearningAnalytics {
+  generatedAt: string;
+  totals: {
+    skills: number;
+    evidence: number;
+    successfulEvidence: number;
+    learners: number;
+    masteredLearners: number;
+    successRate: number | null;
+    masteryRate: number | null;
+  };
+  skills: Array<{
+    skillId: string;
+    skillKey: string;
+    skillName: string;
+    evidence: {
+      attempts: number;
+      successful: number;
+      successRate: number | null;
+      taskTypeCount: number;
+      taskTypes: Array<{
+        taskType: string;
+        attempts: number;
+        successful: number;
+        successRate: number;
+      }>;
+    };
+    learners: number;
+    mastery: {
+      mastered: number;
+      proficient: number;
+      developing: number;
+      practicing: number;
+      masteryRate: number | null;
+    };
+    qualitySignals: Array<'LOW_SAMPLE_SIZE' | 'LOW_SUCCESS_RATE' | 'LOW_TASK_DIVERSITY'>;
+  }>;
+}
