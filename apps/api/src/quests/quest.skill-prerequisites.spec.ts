@@ -24,7 +24,12 @@ function createService(options: {
   const events: string[] = [];
   let createCount = 0;
   const tx = {
-    $queryRaw: async () => {
+    $queryRaw: async (strings: TemplateStringsArray) => {
+      const query = strings.join('');
+      if (query.includes('"profiles"')) {
+        events.push('profile-lock');
+        return [{ id: profileId }];
+      }
       events.push('catalog-shared-lock');
       return [];
     },
@@ -91,7 +96,7 @@ test('startRun creates a quest with no skill tags without reading the skill cata
 
   const result = await service.startRun(profileId, { slug: 'published-quest' });
 
-  assert.deepEqual(events, ['start-run-transaction', 'find-active-run', 'create-run', 'load-run']);
+  assert.deepEqual(events, ['start-run-transaction', 'profile-lock', 'find-active-run', 'create-run', 'load-run']);
   assert.equal(getCreateCount(), 1);
   assert.deepEqual(result, { profileId, runId: createdRunId });
 });
@@ -106,6 +111,7 @@ test('startRun allows a quest when all direct prerequisites are mastered', async
 
   assert.deepEqual(events, [
     'start-run-transaction',
+    'profile-lock',
     'find-active-run',
     'catalog-shared-lock',
     'load-skill-graph',
@@ -197,7 +203,7 @@ test('startRun keeps an existing active run resumable after prerequisites change
 
   const result = await service.startRun(profileId, { slug: 'published-quest' });
 
-  assert.deepEqual(events, ['start-run-transaction', 'find-active-run', 'load-run']);
+  assert.deepEqual(events, ['start-run-transaction', 'profile-lock', 'find-active-run', 'load-run']);
   assert.equal(getCreateCount(), 0);
   assert.deepEqual(result, { profileId, runId: activeRun.id });
 });
