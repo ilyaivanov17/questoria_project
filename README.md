@@ -35,7 +35,7 @@ Questoria — образовательная игровая платформа �
 nvm install
 nvm use
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 cp .env.example .env
 docker compose -f infra/docker/docker-compose.yml up -d postgres
 pnpm db:generate
@@ -49,7 +49,26 @@ pnpm dev
 - Frontend: http://localhost:3000
 - API health (проверка из терминала): http://localhost:4000/api/health
 
-В GitHub Codespaces браузер обращается к API через same-origin proxy на порту 3000. Порт 4000 не нужно открывать в браузере или прописывать его публичный URL. `API_INTERNAL_URL` должен указывать на `http://localhost:4000`; `WEB_ORIGIN` можно оставить пустым — API автоматически определит forwarded origin Codespaces. Корневой `.env` загружается командами `pnpm dev` и `pnpm db:seed`; копировать его в `apps/api/.env` не требуется.
+Корневой `.env` загружается командами `pnpm dev` и `pnpm db:seed`; копировать его в `apps/api/.env` не требуется.
+
+## GitHub Codespaces
+
+1. Откройте репозиторий, выберите **Code → Codespaces → Create codespace** на ветке с принятыми инфраструктурными изменениями.
+2. Devcontainer автоматически создаст `.env` из `.env.example` (только если `.env` ещё нет), установит зависимости по `pnpm-lock.yaml`, поднимет PostgreSQL, применит миграции и загрузит seed-квест.
+3. После завершения инициализации запустите приложения:
+
+   ```bash
+   pnpm dev
+   ```
+
+4. Откройте автоматически forwarded web-порт 3000. API остаётся на внутреннем `localhost:4000`; frontend обращается к нему через same-origin proxy. Не открывайте порт 4000 публично и не прописывайте forwarded URL в `.env`.
+5. Проверьте окружение:
+
+   ```bash
+   bash scripts/check-environment.sh --services
+   ```
+
+Подробности, повторный запуск setup, диагностика и безопасное управление PostgreSQL описаны в [Codespaces runbook](docs/operations/codespaces.md).
 
 Команды:
 
@@ -66,7 +85,7 @@ pnpm db:migrate
 pnpm db:studio
 ```
 
-После первого `pnpm install` необходимо сохранить созданный `pnpm-lock.yaml` в Git. Пока lockfile не добавлен, CI устанавливает зависимости без frozen-lockfile.
+`pnpm-lock.yaml` хранится в Git и фиксирует версии зависимостей для root workspace, API, frontend и contracts. Обновляйте его вместе с `package.json`; CI проверяет установку командой `pnpm install --frozen-lockfile`.
 
 ## Первый вертикальный квест
 
