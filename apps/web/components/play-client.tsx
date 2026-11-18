@@ -311,13 +311,13 @@ export function PlayClient({ runId }: { runId: string }) {
         <h1>{run.currentLevel?.title ?? 'Продолжение миссии'}</h1>
         <p className="game-intro">{run.currentLevel?.intro ?? run.quest.summary}</p>
         {puzzle ? (
-          <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting}>
+          <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting} aria-labelledby="current-puzzle-prompt">
             <div className="puzzle-counter">
               <span>{getPuzzleTypeCopy(puzzle.type).label}</span>
               <span>Попыток осталось: {puzzle.attemptsRemaining} из {puzzle.maxAttempts}</span>
             </div>
             <h2 id="current-puzzle-prompt">{puzzle.prompt}</h2>
-            <p className="game-puzzle-guidance">{getPuzzleTypeCopy(puzzle.type).instruction}</p>
+            <p className="game-puzzle-guidance" id="current-puzzle-guidance">{getPuzzleTypeCopy(puzzle.type).instruction}</p>
             {!['single_choice', 'multiple_choice', 'numeric_input', 'text_input', 'ordering'].includes(puzzle.type) && (
               <div className="feedback feedback-error" role="alert">Этот формат задания пока не поддерживается. Вернись в каталог и выбери другую миссию.</div>
             )}
