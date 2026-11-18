@@ -487,7 +487,16 @@ export function AdminClient() {
     <header className="admin-header"><div><p className="eyebrow">QUESTORIA CONTENT STUDIO</p><h1>Управление контентом</h1><p className="muted-copy">{identity.email} · {identity.roleKeys.join(', ')}</p></div><a className="button button-secondary" href="/quests">Открыть каталог</a></header>
     {error && <p className="form-error admin-alert" role="alert">{error}</p>}{notice && <p className="form-success admin-alert" role="status">{notice}</p>}
 
-    {identity.mfaEnabled && identity.sessionMfaVerified && <section className="admin-panel admin-mfa-recovery-panel">
+    <nav className="admin-section-nav" aria-label="Навигация по разделам CMS">
+      {identity.mfaEnabled && identity.sessionMfaVerified && <a href="#admin-security">Безопасность</a>}
+      {isSuperAdmin && <a href="#admin-users">Пользователи и роли</a>}
+      <a href="#admin-categories">Рубрики</a>
+      <a href="#admin-quests">Квесты и версии</a>
+      {canAuthor && <a href="#admin-editor">Новый квест</a>}
+      {canReview && <a href="#admin-audit">Журнал аудита</a>}
+    </nav>
+
+    {identity.mfaEnabled && identity.sessionMfaVerified && <section id="admin-security" className="admin-panel admin-mfa-recovery-panel">
       <div className="admin-section-title">
         <div><p className="eyebrow">ACCOUNT SECURITY</p><h2>Резервные коды MFA</h2>
           <p className="admin-section-description">Осталось кодов: <strong>{recoveryCodeCount}</strong>. Каждый код можно применить только один раз.</p>
@@ -510,7 +519,7 @@ export function AdminClient() {
       </div>}
     </section>}
 
-    {isSuperAdmin && <section className="admin-panel admin-users-panel">
+    {isSuperAdmin && <section id="admin-users" className="admin-panel admin-users-panel">
       <div className="admin-section-title">
         <div><p className="eyebrow">01 / USER ACCESS</p><h2>Пользователи и роли</h2><p className="admin-section-description">Управление доступом доступно только Super Admin после подтверждения MFA.</p></div>
         <span className="admin-count">{managedUsers.length}</span>
@@ -597,7 +606,7 @@ export function AdminClient() {
       <p className="admin-users-footnote">Защита от блокировки: нельзя изменить собственный доступ или удалить/приостановить последнего активного Super Admin. Приостановка аккаунта завершает все его сессии. Все изменения записываются в журнал аудита с указанной причиной.</p>
     </section>}
 
-    <section className="admin-panel">
+    <section id="admin-categories" className="admin-panel">
       <div className="admin-section-title"><div><p className="eyebrow">02 / CATEGORIES</p><h2>Рубрики</h2></div><span className="admin-count">{categories.length}</span></div>
       <div className="admin-list">{categories.map((cat) => <article className="admin-list-row" key={cat.id}>
         <div><strong>{cat.title}</strong><span>{cat.slug} · {cat.locale}</span></div>
@@ -614,8 +623,8 @@ export function AdminClient() {
       </form>
     </section>
 
-    <section className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">02 / QUEST LIBRARY</p><h2>Квесты и версии</h2></div><span className="admin-count">{quests.length}</span></div>
+    <section id="admin-quests" className="admin-panel">
+      <div className="admin-section-title"><div><p className="eyebrow">03 / QUEST LIBRARY</p><h2>Квесты и версии</h2></div><span className="admin-count">{quests.length}</span></div>
       <div className="admin-list">{quests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
         <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span></div>
         <div className="admin-row-actions"><span className={`admin-status status-${status.toLowerCase()}`}>{status}</span>
@@ -627,8 +636,8 @@ export function AdminClient() {
       </article>; })}{!quests.length && <p className="admin-empty">Квестов пока нет.</p>}</div>
     </section>
 
-    {canAuthor && <section className="admin-panel">
-      <div className="admin-section-title"><div><p className="eyebrow">03 / CONTENT EDITOR</p><h2>Новый квест</h2></div></div>
+    {canAuthor && <section id="admin-editor" className="admin-panel">
+      <div className="admin-section-title"><div><p className="eyebrow">04 / CONTENT EDITOR</p><h2>Новый квест</h2></div></div>
       <form className="admin-form admin-form-grid" onSubmit={submitQuest}>
         <label className="field admin-field-wide"><span>Опубликованная рубрика</span><select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required><option value="">Выбери рубрику</option>{categories.filter((c) => c.status === 'PUBLISHED').map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
         <label className="field"><span>Slug</span><input value={slug} onChange={(e) => setSlug(e.target.value)} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required/></label>
@@ -660,7 +669,7 @@ export function AdminClient() {
       </form>
     </section>}
 
-    {canReview && <section className="admin-panel admin-audit-panel">
+    {canReview && <section id="admin-audit" className="admin-panel admin-audit-panel">
       <div className="admin-section-title">
         <div><p className="eyebrow">05 / AUDIT TRAIL</p><h2>Журнал действий</h2>
           <p className="admin-section-description">Поиск по событиям, пользователям и объектам. Даты фильтруются по UTC.</p>

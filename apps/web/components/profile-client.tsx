@@ -87,7 +87,8 @@ export function ProfileClient() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const [profileData, progressData, walletData] = await Promise.all([
@@ -151,18 +152,41 @@ export function ProfileClient() {
   }
 
   if (loading) {
-    return <main className="profile-page"><p className="muted-copy">Загружаем профиль…</p></main>;
+    return (
+      <main className="profile-page profile-loading" aria-busy="true">
+        <header className="topbar profile-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark">Q</span><span>questoria</span>
+          </Link>
+          <Link className="simple-nav-link" href="/quests">К квестам</Link>
+        </header>
+        <section className="profile-loading-heading" aria-hidden="true">
+          <span className="profile-skeleton-avatar" />
+          <span className="profile-skeleton-lines"><i /><i /></span>
+        </section>
+        <p className="muted-copy" role="status">Загружаем твой прогресс и историю миссий…</p>
+        <div className="profile-loading-grid" aria-hidden="true">
+          <span /><span /><span /><span />
+        </div>
+      </main>
+    );
   }
 
   if (!profile || !progress || !wallet) {
     return (
       <main className="profile-page">
+        <header className="topbar profile-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark">Q</span><span>questoria</span>
+          </Link>
+          <Link className="simple-nav-link" href="/quests">К квестам</Link>
+        </header>
         <section className="profile-empty">
           <p className="eyebrow">ПРОФИЛЬ</p>
           <h1>Не удалось открыть профиль</h1>
-          <p className="muted-copy">{error || 'Проверь соединение и попробуй ещё раз.'}</p>
-          <button className="button button-primary" onClick={() => void loadProfile()} type="button">
-            Повторить
+          <p className="muted-copy" role="alert">{error || 'Проверь соединение и попробуй ещё раз.'}</p>
+          <button className="button button-primary" onClick={() => void loadProfile(true)} type="button">
+            Повторить загрузку
           </button>
         </section>
       </main>
@@ -197,7 +221,7 @@ export function ProfileClient() {
           <div><p className="eyebrow">ТВОЙ УРОВЕНЬ</p><h2>Исследователь · уровень {profile.progression.level}</h2></div>
           <strong>{profile.progression.totalXp.toLocaleString('ru-RU')} XP</strong>
         </div>
-        <div className="xp-progress-track" role="progressbar" aria-valuenow={profile.progression.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс до следующего уровня">
+        <div className="xp-progress-track" role="progressbar" aria-valuenow={profile.progression.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-valuetext={`${profile.progression.xpIntoLevel} из ${profile.progression.xpForNextLevel} XP на текущем уровне`} aria-label="Прогресс до следующего уровня">
           <span style={{ width: `${profile.progression.progressPercent}%` }} />
         </div>
         <p>{profile.progression.xpIntoLevel} / {profile.progression.xpForNextLevel} XP на этом уровне · ещё {profile.progression.xpToNextLevel} XP до следующего</p>
@@ -230,7 +254,8 @@ export function ProfileClient() {
           <div><p className="eyebrow">ТВОИ ДОСТИЖЕНИЯ</p><h2>Значки исследователя</h2></div>
           <span className="achievement-count">{profile.progression.unlockedAchievements} / {profile.progression.achievements.length}</span>
         </div>
-        <div className="achievement-grid">
+        {profile.progression.achievements.length ? (
+          <div className="achievement-grid">
           {profile.progression.achievements.map((achievement) => (
             <article className={achievement.unlocked ? 'achievement-card unlocked' : 'achievement-card locked'} key={achievement.id}>
               <span className="achievement-icon">{achievement.unlocked ? achievement.icon : '◇'}</span>
@@ -238,7 +263,12 @@ export function ProfileClient() {
               <span className="achievement-state">{achievement.unlocked ? 'Получено' : 'Впереди'}</span>
             </article>
           ))}
-        </div>
+          </div>
+        ) : (
+          <div className="profile-empty-inline" role="status">
+            Достижения появятся здесь, когда ты завершишь первые этапы и миссии.
+          </div>
+        )}
       </section>
 
       <div className="profile-columns">
