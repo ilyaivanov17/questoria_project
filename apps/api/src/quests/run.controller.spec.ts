@@ -5,7 +5,7 @@ import { RunController } from './run.controller.js';
 
 function getThrottlerMetadata(handler: Function, kind: 'LIMIT' | 'TTL'): unknown {
   const key = Reflect.getMetadataKeys(handler).find(
-    (candidate) => String(candidate).endsWith(`THROTTLER:${kind}:default`),
+    (candidate) => String(candidate).endsWith(`THROTTLER:${kind}default`),
   );
   assert.ok(key, `expected default throttler ${kind} metadata`);
   return Reflect.getMetadata(key, handler);
