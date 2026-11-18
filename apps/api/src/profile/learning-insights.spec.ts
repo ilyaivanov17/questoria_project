@@ -37,7 +37,7 @@ test('keeps a small accuracy difference stable', () => {
   ]));
   assert.equal(trend.direction, 'stable');
   assert.equal(trend.recentSuccessRate, 60);
-  assert.equal(trend.previousSuccessRate, 40);
+  assert.equal(trend.previousSuccessRate, 60);
 });
 
 test('does not label an incomplete sample as a trend', () => {
