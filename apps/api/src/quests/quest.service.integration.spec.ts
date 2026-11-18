@@ -13,6 +13,7 @@ interface RunSnapshot {
     prompt: string;
     explanation: string;
     correctAnswer: Record<string, unknown>;
+    correctAnswerText: string;
   } | null;
   result: {
     success: boolean;
@@ -204,6 +205,7 @@ test(
     assert.deepEqual(firstAttempt.review, {
       explanation: 'Первое объяснение.',
       correctAnswer: { optionId: 'first-correct' },
+      correctAnswerText: 'Верный вариант',
     });
 
     // Simulate an unfinished run written by the previous implementation.
@@ -218,6 +220,7 @@ test(
     assert.notEqual(resumed.currentPuzzle.id, firstPuzzleId);
     assert.equal(resumed.lastReview?.puzzleId, firstPuzzleId);
     assert.deepEqual(resumed.lastReview?.correctAnswer, { optionId: 'first-correct' });
+    assert.equal(resumed.lastReview?.correctAnswerText, 'Верный вариант');
 
     const finalAttemptId = randomUUID();
     const finalAttempt = await service.submitAttempt(
@@ -231,6 +234,7 @@ test(
     assert.deepEqual(finalAttempt.review, {
       explanation: 'Итоговое объяснение.',
       correctAnswer: { optionId: 'final-correct' },
+      correctAnswerText: 'Верный вариант',
     });
     assert.deepEqual(finalAttempt.rewards, {
       xp: 30,
