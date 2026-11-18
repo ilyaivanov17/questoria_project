@@ -11,7 +11,13 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
 import type { StartRunDto } from './dto/start-run.dto.js';
 import { asJsonRecord, asOptionList } from './json.js';
-import { validatePuzzleAnswer } from './puzzle-validator.js';
+import { buildPuzzleReview, validatePuzzleAnswer } from './puzzle-validator.js';
+import type { PuzzleAnswerReview, PuzzleAttemptResponse, RunPuzzleReview } from '@questoria/contracts';
+import {
+  getNextAvailablePuzzle,
+  getResolvedPuzzleIds,
+  isPuzzleResolved,
+} from './attempt-progress.js';
 
 const LEVEL_REWARD = { xp: 5, coins: 2 };
 const QUEST_REWARD = { xp: 25, coins: 10 };
@@ -205,18 +211,80 @@ export class QuestService {
     const puzzles = run.questVersion.levels.flatMap((level) =>
       level.puzzles.map((puzzle) => ({ level, puzzle })),
     );
+    const resolvedPuzzleIds = getResolvedPuzzleIds(
+      puzzles.map(({ puzzle }) => ({ id: puzzle.id, maxAttempts: puzzle.maxAttempts })),
+      run.attempts,
+    );
+
+    // Older releases marked a run ABANDONED as soon as one puzzle exhausted
+    // its attempts. Resume only when there is still an unresolved puzzle.
+    // A legacy run whose every puzzle is already resolved must remain terminal;
+    // reopening it would leave an IN_PROGRESS run with no current puzzle and
+    // prevent the player from starting a fresh run.
+    const hasUnresolvedPuzzles = resolvedPuzzleIds.size < puzzles.length;
+    if (run.status === 'ABANDONED' && hasUnresolvedPuzzles) {
+      const reopenedAt = new Date();
+      const reopened = await this.prisma.questRun.updateMany({
+        where: { id: run.id, profileId, status: 'ABANDONED' },
+        data: { status: 'IN_PROGRESS', completedAt: null, lastActivityAt: reopenedAt },
+      });
+      if (reopened.count === 1) {
+        run.status = 'IN_PROGRESS';
+        run.completedAt = null;
+        run.lastActivityAt = reopenedAt;
+      } else {
+        const currentState = await this.prisma.questRun.findUnique({
+          where: { id: run.id },
+          select: { status: true, completedAt: true, lastActivityAt: true },
+        });
+        if (currentState) {
+          run.status = currentState.status;
+          run.completedAt = currentState.completedAt;
+          run.lastActivityAt = currentState.lastActivityAt;
+        }
+      }
+    }
+
     const completedPuzzleIds = new Set(
       run.attempts.filter((attempt) => attempt.isCorrect).map((attempt) => attempt.puzzleId),
     );
 
     const current = run.status === 'IN_PROGRESS'
-      ? puzzles.find(({ puzzle }) => !completedPuzzleIds.has(puzzle.id))
+      ? getNextAvailablePuzzle(
+        puzzles.map(({ level, puzzle }) => ({
+          level,
+          puzzle,
+          id: puzzle.id,
+          maxAttempts: puzzle.maxAttempts,
+        })),
+        run.attempts,
+      )
       : undefined;
 
     const puzzleAttempts = current
       ? run.attempts.filter((attempt) => attempt.puzzleId === current.puzzle.id)
       : [];
     const currentPayload = current ? asJsonRecord(current.puzzle.publicPayload) : {};
+
+    const latestExhaustedAttempt = [...run.attempts].reverse().find(
+      (attempt) => !attempt.isCorrect && attempt.attemptsRemaining === 0,
+    );
+    const exhaustedPuzzle = latestExhaustedAttempt
+      ? puzzles.find(({ puzzle }) => puzzle.id === latestExhaustedAttempt.puzzleId)?.puzzle
+      : undefined;
+    const lastReview: RunPuzzleReview | null = latestExhaustedAttempt && exhaustedPuzzle
+      ? {
+        puzzleId: exhaustedPuzzle.id,
+        prompt: typeof asJsonRecord(exhaustedPuzzle.publicPayload).prompt === 'string'
+          ? asJsonRecord(exhaustedPuzzle.publicPayload).prompt as string
+          : '',
+        ...buildPuzzleReview(
+          exhaustedPuzzle.type,
+          exhaustedPuzzle.publicPayload,
+          exhaustedPuzzle.solutionPrivate,
+        ),
+      }
+      : null;
 
     let result: object | null = null;
     if (run.status !== 'IN_PROGRESS') {
@@ -238,8 +306,10 @@ export class QuestService {
       const balances = new Map(
         rewardEntries.map((entry) => [entry.currency, entry._sum.amount ?? 0]),
       );
+      const everyPuzzleSolvedCorrectly = puzzles.length > 0
+        && puzzles.every(({ puzzle }) => completedPuzzleIds.has(puzzle.id));
       result = {
-        success: run.status === 'COMPLETED',
+        success: run.status === 'COMPLETED' && everyPuzzleSolvedCorrectly,
         score: run.attempts.reduce((sum, attempt) => sum + attempt.score, 0),
         attempts: run.attempts.length,
         completedLevels: run.levelProgress.filter((progress) => progress.status === 'COMPLETED').length,
@@ -264,10 +334,12 @@ export class QuestService {
         category: run.questVersion.quest.category.title,
       },
       progress: {
-        completedPuzzles: completedPuzzleIds.size,
+        completedPuzzles: resolvedPuzzleIds.size,
+        correctPuzzles: completedPuzzleIds.size,
         totalPuzzles: puzzles.length,
-        percent: puzzles.length ? Math.round((completedPuzzleIds.size / puzzles.length) * 100) : 0,
+        percent: puzzles.length ? Math.round((resolvedPuzzleIds.size / puzzles.length) * 100) : 0,
       },
+      lastReview,
       currentLevel: current ? {
         orderNo: current.level.orderNo,
         title: current.level.title,
@@ -301,7 +373,7 @@ export class QuestService {
     runId: string,
     puzzleId: string,
     dto: SubmitAttemptDto,
-  ): Promise<object> {
+  ): Promise<PuzzleAttemptResponse> {
     const duplicate = await this.prisma.puzzleAttempt.findUnique({
       where: {
         profileId_attemptKey: {
@@ -348,22 +420,18 @@ export class QuestService {
         const orderedPuzzles = await tx.puzzle.findMany({
           where: { level: { questVersionId: activeRun.questVersionId } },
           orderBy: [{ level: { orderNo: 'asc' } }, { orderNo: 'asc' }],
-          select: { id: true },
+          select: { id: true, maxAttempts: true },
         });
-        const solved = await tx.puzzleAttempt.findMany({
-          where: { profileId, questRunId: runId, isCorrect: true },
-          distinct: ['puzzleId'],
-          select: { puzzleId: true },
+        const priorAttempts = await tx.puzzleAttempt.findMany({
+          where: { profileId, questRunId: runId },
+          select: { puzzleId: true, isCorrect: true },
         });
-        const solvedIds = new Set(solved.map((item) => item.puzzleId));
-        const expectedPuzzle = orderedPuzzles.find((item) => !solvedIds.has(item.id));
+        const expectedPuzzle = getNextAvailablePuzzle(orderedPuzzles, priorAttempts);
         if (!expectedPuzzle || expectedPuzzle.id !== puzzleId) {
-          throw new ConflictException('Complete the current puzzle before moving to another one.');
+          throw new ConflictException('Complete or review the current puzzle before moving to another one.');
         }
 
-        const attemptsMade = await tx.puzzleAttempt.count({
-          where: { profileId, questRunId: runId, puzzleId },
-        });
+        const attemptsMade = priorAttempts.filter((attempt) => attempt.puzzleId === puzzleId).length;
         if (attemptsMade >= puzzle.maxAttempts) {
           throw new HttpException('No attempts remain for this puzzle.', HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -382,132 +450,135 @@ export class QuestService {
             attemptsRemaining,
           },
         });
+        const attemptsAfterSave = [...priorAttempts, { puzzleId, isCorrect }];
 
         let xpAwarded = 0;
         let coinsAwarded = 0;
         let runCompleted = false;
         let questFirstCompletion = false;
 
-        if (isCorrect) {
-          const levelPuzzleCount = await tx.puzzle.count({
-            where: { levelId: puzzle.levelId },
+        const levelPuzzles = await tx.puzzle.findMany({
+          where: { levelId: puzzle.levelId },
+          select: { id: true, maxAttempts: true },
+        });
+        const levelResolved = levelPuzzles.length > 0
+          && levelPuzzles.every((levelPuzzle) => isPuzzleResolved(levelPuzzle, attemptsAfterSave));
+
+        if (levelResolved) {
+          const levelAggregate = await tx.puzzleAttempt.aggregate({
+            where: { profileId, questRunId: runId, puzzle: { levelId: puzzle.levelId } },
+            _sum: { score: true },
           });
-          const levelSolved = await tx.puzzleAttempt.findMany({
-            where: {
-              profileId,
+          await tx.levelProgress.createMany({
+            data: [{
+              id: randomUUID(),
               questRunId: runId,
-              isCorrect: true,
-              puzzle: { levelId: puzzle.levelId },
-            },
-            distinct: ['puzzleId'],
-            select: { puzzleId: true },
+              levelId: puzzle.levelId,
+              status: 'COMPLETED',
+              score: levelAggregate._sum.score ?? 0,
+              completedAt: new Date(),
+            }],
+            skipDuplicates: true,
           });
 
-          if (levelPuzzleCount > 0 && levelSolved.length === levelPuzzleCount) {
-            const levelAggregate = await tx.puzzleAttempt.aggregate({
-              where: { profileId, questRunId: runId, puzzle: { levelId: puzzle.levelId } },
-              _sum: { score: true },
-            });
-            await tx.levelProgress.createMany({
-              data: [{
-                id: randomUUID(),
-                questRunId: runId,
-                levelId: puzzle.levelId,
-                status: 'COMPLETED',
-                score: levelAggregate._sum.score ?? 0,
-                completedAt: new Date(),
-              }],
-              skipDuplicates: true,
-            });
+          const levelXp = await tx.walletLedger.createMany({
+            data: [{
+              id: randomUUID(),
+              profileId,
+              currency: 'XP',
+              amount: LEVEL_REWARD.xp,
+              reason: 'Завершение уровня',
+              sourceType: 'LEVEL_COMPLETION',
+              sourceId: runId,
+              idempotencyKey: `level_complete:${profileId}:${activeRun.questVersionId}:${puzzle.levelId}:XP`,
+            }],
+            skipDuplicates: true,
+          });
+          const levelCoins = await tx.walletLedger.createMany({
+            data: [{
+              id: randomUUID(),
+              profileId,
+              currency: 'COIN',
+              amount: LEVEL_REWARD.coins,
+              reason: 'Завершение уровня',
+              sourceType: 'LEVEL_COMPLETION',
+              sourceId: runId,
+              idempotencyKey: `level_complete:${profileId}:${activeRun.questVersionId}:${puzzle.levelId}:COIN`,
+            }],
+            skipDuplicates: true,
+          });
+          xpAwarded += levelXp.count ? LEVEL_REWARD.xp : 0;
+          coinsAwarded += levelCoins.count ? LEVEL_REWARD.coins : 0;
+        }
 
-            const levelXp = await tx.walletLedger.createMany({
+        runCompleted = orderedPuzzles.length > 0
+          && orderedPuzzles.every((orderedPuzzle) => isPuzzleResolved(orderedPuzzle, attemptsAfterSave));
+        const finalPuzzle = orderedPuzzles[orderedPuzzles.length - 1];
+        const finalPuzzleCorrect = Boolean(
+          finalPuzzle && attemptsAfterSave.some(
+            (attempt) => attempt.puzzleId === finalPuzzle.id && attempt.isCorrect,
+          ),
+        );
+
+        if (runCompleted) {
+          const totalScore = await tx.puzzleAttempt.aggregate({
+            where: { profileId, questRunId: runId },
+            _sum: { score: true },
+          });
+          await tx.questRun.update({
+            where: { id: runId },
+            data: { status: 'COMPLETED', completedAt: new Date(), lastActivityAt: new Date() },
+          });
+
+          const completionXp = QUEST_REWARD.xp + (finalPuzzleCorrect ? FINAL_PUZZLE_REWARD.xp : 0);
+          const completionCoins = QUEST_REWARD.coins + (finalPuzzleCorrect ? FINAL_PUZZLE_REWARD.coins : 0);
+          const completion = await tx.questCompletion.createMany({
+            data: [{
+              id: randomUUID(),
+              profileId,
+              questVersionId: activeRun.questVersionId,
+              questRunId: runId,
+              score: totalScore._sum.score ?? 0,
+              xpAwarded: completionXp,
+              coinsAwarded: completionCoins,
+              completedAt: new Date(),
+            }],
+            skipDuplicates: true,
+          });
+          questFirstCompletion = completion.count === 1;
+
+          if (questFirstCompletion) {
+            const questXp = await tx.walletLedger.createMany({
               data: [{
                 id: randomUUID(),
                 profileId,
                 currency: 'XP',
-                amount: LEVEL_REWARD.xp,
-                reason: 'Завершение уровня',
-                sourceType: 'LEVEL_COMPLETION',
+                amount: QUEST_REWARD.xp,
+                reason: 'Первое завершение квеста',
+                sourceType: 'QUEST_COMPLETION',
                 sourceId: runId,
-                idempotencyKey: `level_complete:${profileId}:${activeRun.questVersionId}:${puzzle.levelId}:XP`,
+                idempotencyKey: `quest_complete:${profileId}:${activeRun.questVersionId}:XP`,
               }],
               skipDuplicates: true,
             });
-            const levelCoins = await tx.walletLedger.createMany({
+            const questCoins = await tx.walletLedger.createMany({
               data: [{
                 id: randomUUID(),
                 profileId,
                 currency: 'COIN',
-                amount: LEVEL_REWARD.coins,
-                reason: 'Завершение уровня',
-                sourceType: 'LEVEL_COMPLETION',
+                amount: QUEST_REWARD.coins,
+                reason: 'Первое завершение квеста',
+                sourceType: 'QUEST_COMPLETION',
                 sourceId: runId,
-                idempotencyKey: `level_complete:${profileId}:${activeRun.questVersionId}:${puzzle.levelId}:COIN`,
+                idempotencyKey: `quest_complete:${profileId}:${activeRun.questVersionId}:COIN`,
               }],
               skipDuplicates: true,
             });
-            xpAwarded += levelXp.count ? LEVEL_REWARD.xp : 0;
-            coinsAwarded += levelCoins.count ? LEVEL_REWARD.coins : 0;
-          }
 
-          const allPuzzleIds = new Set(orderedPuzzles.map((item) => item.id));
-          const solvedPuzzleIds = new Set(
-            solved.map((item) => item.puzzleId).concat(puzzleId),
-          );
-          runCompleted = allPuzzleIds.size > 0 && [...allPuzzleIds].every((id) => solvedPuzzleIds.has(id));
+            xpAwarded += questXp.count ? QUEST_REWARD.xp : 0;
+            coinsAwarded += questCoins.count ? QUEST_REWARD.coins : 0;
 
-          if (runCompleted) {
-            const totalScore = await tx.puzzleAttempt.aggregate({
-              where: { profileId, questRunId: runId },
-              _sum: { score: true },
-            });
-            await tx.questRun.update({
-              where: { id: runId },
-              data: { status: 'COMPLETED', completedAt: new Date(), lastActivityAt: new Date() },
-            });
-
-            const completion = await tx.questCompletion.createMany({
-              data: [{
-                id: randomUUID(),
-                profileId,
-                questVersionId: activeRun.questVersionId,
-                questRunId: runId,
-                score: totalScore._sum.score ?? 0,
-                xpAwarded: QUEST_REWARD.xp + FINAL_PUZZLE_REWARD.xp,
-                coinsAwarded: QUEST_REWARD.coins + FINAL_PUZZLE_REWARD.coins,
-                completedAt: new Date(),
-              }],
-              skipDuplicates: true,
-            });
-            questFirstCompletion = completion.count === 1;
-
-            if (questFirstCompletion) {
-              const questXp = await tx.walletLedger.createMany({
-                data: [{
-                  id: randomUUID(),
-                  profileId,
-                  currency: 'XP',
-                  amount: QUEST_REWARD.xp,
-                  reason: 'Первое завершение квеста',
-                  sourceType: 'QUEST_COMPLETION',
-                  sourceId: runId,
-                  idempotencyKey: `quest_complete:${profileId}:${activeRun.questVersionId}:XP`,
-                }],
-                skipDuplicates: true,
-              });
-              const questCoins = await tx.walletLedger.createMany({
-                data: [{
-                  id: randomUUID(),
-                  profileId,
-                  currency: 'COIN',
-                  amount: QUEST_REWARD.coins,
-                  reason: 'Первое завершение квеста',
-                  sourceType: 'QUEST_COMPLETION',
-                  sourceId: runId,
-                  idempotencyKey: `quest_complete:${profileId}:${activeRun.questVersionId}:COIN`,
-                }],
-                skipDuplicates: true,
-              });
+            if (finalPuzzleCorrect) {
               const finalXp = await tx.walletLedger.createMany({
                 data: [{
                   id: randomUUID(),
@@ -534,26 +605,14 @@ export class QuestService {
                 }],
                 skipDuplicates: true,
               });
-
-              xpAwarded += (questXp.count ? QUEST_REWARD.xp : 0)
-                + (finalXp.count ? FINAL_PUZZLE_REWARD.xp : 0);
-              coinsAwarded += (questCoins.count ? QUEST_REWARD.coins : 0)
-                + (finalCoins.count ? FINAL_PUZZLE_REWARD.coins : 0);
+              xpAwarded += finalXp.count ? FINAL_PUZZLE_REWARD.xp : 0;
+              coinsAwarded += finalCoins.count ? FINAL_PUZZLE_REWARD.coins : 0;
             }
-          } else {
-            await tx.questRun.update({
-              where: { id: runId },
-              data: { lastActivityAt: new Date() },
-            });
           }
         } else {
           await tx.questRun.update({
             where: { id: runId },
-            data: {
-              status: attemptsRemaining === 0 ? 'ABANDONED' : 'IN_PROGRESS',
-              completedAt: attemptsRemaining === 0 ? new Date() : null,
-              lastActivityAt: new Date(),
-            },
+            data: { lastActivityAt: new Date() },
           });
         }
 
@@ -568,7 +627,10 @@ export class QuestService {
         });
       }, { isolationLevel: 'Serializable' });
 
-      return this.attemptResponse(attempt);
+      const review = !attempt.isCorrect && attempt.attemptsRemaining === 0
+        ? buildPuzzleReview(puzzle.type, puzzle.publicPayload, puzzle.solutionPrivate)
+        : undefined;
+      return this.attemptResponse(attempt, review);
     } catch (error) {
       if (this.isPrismaCode(error, 'P2002')) {
         const retry = await this.prisma.puzzleAttempt.findUnique({
@@ -720,7 +782,7 @@ export class QuestService {
     }
   }
 
-  private validateAndReturnDuplicate(
+  private async validateAndReturnDuplicate(
     attempt: {
       questRunId: string;
       puzzleId: string;
@@ -738,7 +800,7 @@ export class QuestService {
     runId: string,
     puzzleId: string,
     dto: SubmitAttemptDto,
-  ): object {
+  ): Promise<PuzzleAttemptResponse> {
     if (
       attempt.questRunId !== runId ||
       attempt.puzzleId !== puzzleId ||
@@ -746,20 +808,32 @@ export class QuestService {
     ) {
       throw new ConflictException('This attemptId has already been used for another answer.');
     }
-    return this.attemptResponse(attempt);
+
+    let review: PuzzleAnswerReview | undefined;
+    if (!attempt.isCorrect && attempt.attemptsRemaining === 0) {
+      const puzzle = await this.prisma.puzzle.findUnique({
+        where: { id: puzzleId },
+        select: { type: true, publicPayload: true, solutionPrivate: true },
+      });
+      if (puzzle) review = buildPuzzleReview(puzzle.type, puzzle.publicPayload, puzzle.solutionPrivate);
+    }
+    return this.attemptResponse(attempt, review);
   }
 
-  private attemptResponse(attempt: {
-    attemptKey: string;
-    isCorrect: boolean;
-    score: number;
-    feedback: string;
-    attemptsRemaining: number;
-    xpAwarded: number;
-    coinsAwarded: number;
-    runCompleted: boolean;
-    questFirstCompletion: boolean;
-  }): object {
+  private attemptResponse(
+    attempt: {
+      attemptKey: string;
+      isCorrect: boolean;
+      score: number;
+      feedback: string;
+      attemptsRemaining: number;
+      xpAwarded: number;
+      coinsAwarded: number;
+      runCompleted: boolean;
+      questFirstCompletion: boolean;
+    },
+    review?: PuzzleAnswerReview,
+  ): PuzzleAttemptResponse {
     return {
       attemptId: attempt.attemptKey,
       result: attempt.isCorrect ? 'correct' : 'incorrect',
@@ -773,9 +847,11 @@ export class QuestService {
       },
       runCompleted: attempt.runCompleted,
       puzzleProgress: {
-        completed: attempt.isCorrect,
+        completed: attempt.isCorrect || attempt.attemptsRemaining === 0,
+        correct: attempt.isCorrect,
         levelScore: attempt.score,
       },
+      ...(review ? { review } : {}),
     };
   }
 
