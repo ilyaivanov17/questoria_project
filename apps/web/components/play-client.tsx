@@ -10,11 +10,20 @@ interface DisplayItem {
   label: string;
 }
 
+interface RunPuzzleReview {
+  puzzleId: string;
+  prompt: string;
+  explanation: string;
+  correctAnswer: Record<string, unknown>;
+  correctAnswerText?: string;
+}
+
 interface RunState {
   id: string;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
   quest: { slug: string; title: string; summary: string; category: string };
-  progress: { completedPuzzles: number; totalPuzzles: number; percent: number };
+  progress: { completedPuzzles: number; correctPuzzles?: number; totalPuzzles: number; percent: number };
+  lastReview?: RunPuzzleReview | null;
   currentLevel: { orderNo: number; title: string; intro: string } | null;
   currentPuzzle: {
     id: string;
@@ -39,6 +48,25 @@ interface RunState {
   } | null;
 }
 
+
+
+function PuzzleReviewPanel({ review }: { review?: RunPuzzleReview | null }) {
+  if (!review) return null;
+
+  return (
+    <section className="puzzle-review-panel" aria-labelledby="last-review-title" aria-live="polite">
+      <p className="eyebrow">РАЗБОР ОТВЕТА</p>
+      <h2 id="last-review-title">{review.prompt}</h2>
+      <p>{review.explanation}</p>
+      {review.correctAnswerText ? (
+        <div className="puzzle-review-answer">
+          <strong>Правильный ответ</strong>
+          <p>{review.correctAnswerText}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 export function PlayClient({ runId }: { runId: string }) {
   const router = useRouter();
@@ -259,8 +287,9 @@ export function PlayClient({ runId }: { runId: string }) {
           <p className="muted-copy">
             {run.result?.success
               ? `Ты завершил миссию «${run.quest.title}». Результат и заслуженные награды сохранены в профиле.`
-              : `Прохождение миссии «${run.quest.title}» завершено. Ошибки помогают понять, что стоит попробовать иначе. Выбери новую попытку или другую миссию.`}
+              : `Прохождение миссии «${run.quest.title}» завершено. Разбор ошибок поможет подготовиться к следующей попытке.`}
           </p>
+          <PuzzleReviewPanel review={run.lastReview} />
           <div className="result-stats">
             <div><strong>{run.result?.score ?? 0}</strong><span>баллов</span></div>
             <div><strong>{run.result?.attempts ?? 0}</strong><span>попыток</span></div>
@@ -310,6 +339,7 @@ export function PlayClient({ runId }: { runId: string }) {
         <p className="eyebrow">{run.quest.title}</p>
         <h1>{run.currentLevel?.title ?? 'Продолжение миссии'}</h1>
         <p className="game-intro">{run.currentLevel?.intro ?? run.quest.summary}</p>
+        <PuzzleReviewPanel review={run.lastReview} />
         {puzzle ? (
           <form className="puzzle-panel" onSubmit={handlePuzzleSubmit} aria-busy={submitting} aria-labelledby="current-puzzle-prompt" aria-describedby="current-puzzle-guidance">
             <div className="puzzle-counter">
