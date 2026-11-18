@@ -199,3 +199,24 @@ export interface AdminTaskLearningAnalytics {
   };
 }
 
+
+
+export interface PlayerAchievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  awardedAt: string | null;
+  xpReward: number;
+  coinsReward: number;
+  xpAwarded: number;
+  coinsAwarded: number;
+}
+
+export interface PlayerAchievementsResponse {
+  achievements: PlayerAchievement[];
+  history: PlayerAchievement[];
+  unlockedCount: number;
+  totalCount: number;
+}
