@@ -39,6 +39,22 @@ export class SkillService {
               },
               take: 1,
             },
+            prerequisites: {
+              include: {
+                prerequisite: {
+                  select: {
+                    id: true,
+                    key: true,
+                    name: true,
+                    progress: {
+                      where: { profileId },
+                      select: { status: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
           },
         }),
         tx.learningEvidence.findMany({
@@ -81,6 +97,20 @@ export class SkillService {
         description: definition.description,
         difficulty: definition.difficulty,
         status: (progress?.status.toLowerCase() ?? 'not_started') as PlayerSkillStatus,
+        available: definition.prerequisites.every((edge) => (
+          edge.prerequisite.progress[0]?.status === 'MASTERED'
+        )),
+        prerequisites: definition.prerequisites.map((edge) => {
+          const prerequisiteProgress = edge.prerequisite.progress[0];
+          const status = (prerequisiteProgress?.status.toLowerCase() ?? 'not_started') as PlayerSkillStatus;
+          return {
+            id: edge.prerequisite.id,
+            key: edge.prerequisite.key,
+            name: edge.prerequisite.name,
+            status,
+            mastered: status === 'mastered',
+          };
+        }),
         attemptsCount: progress?.attemptsCount ?? 0,
         successfulAttempts: progress?.successfulAttempts ?? 0,
         distinctPuzzles: progress?.distinctPuzzles ?? 0,
