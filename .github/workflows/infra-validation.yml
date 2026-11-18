@@ -85,18 +85,40 @@ jobs:
 
           # Migrations are an explicit release action, not an application startup side effect.
           "${production_compose[@]}" --profile release run --rm migrate
-          "${production_compose[@]}" up -d --build
 
-          healthy=0
+          # Start API independently so a failed API healthcheck does not hide its startup logs
+          # behind Compose's web -> api healthy dependency.
+          "${production_compose[@]}" up -d --build api
+          api_id="$("${production_compose[@]}" ps -q api)"
+          api_healthy=0
+          for attempt in $(seq 1 60); do
+            api_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$api_id" 2>/dev/null || echo missing)"
+            if [[ "$api_status" == "healthy" ]]; then
+              api_healthy=1
+              break
+            fi
+            if [[ "$api_status" == "exited" || "$api_status" == "dead" || "$api_status" == "missing" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$api_healthy" -ne 1 ]]; then
+            echo "Production API did not become healthy (container state: $api_status)." >&2
+            "${production_compose[@]}" logs --no-color --tail=150 api
+            exit 1
+          fi
+
+          "${production_compose[@]}" up -d web
+          web_ready=0
           for attempt in $(seq 1 60); do
             if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/health/ready >/dev/null; then
-              healthy=1
+              web_ready=1
               break
             fi
             sleep 1
           done
-          if [[ "$healthy" -ne 1 ]]; then
-            "${production_compose[@]}" logs --no-color --tail=100 api web
+          if [[ "$web_ready" -ne 1 ]]; then
+            "${production_compose[@]}" logs --no-color --tail=150 api web
             exit 1
           fi
 
