@@ -37,7 +37,7 @@ function createService() {
           key: 'number-patterns',
           name: 'Числовые закономерности',
           description: null,
-          difficulty: null,
+          difficulty: 'beginner',
           prerequisites: [{
             prerequisite: {
               id: 'skill-1',
@@ -63,6 +63,31 @@ function createService() {
             },
           }],
           progress: [],
+        },
+      ],
+    },
+    questVersion: {
+      findMany: async () => [
+        {
+          title: 'Продвинутые числовые закономерности',
+          difficulty: 'advanced',
+          durationMin: 12,
+          skills: ['number-patterns'],
+          quest: { slug: 'number-patterns-advanced' },
+        },
+        {
+          title: 'Основы числовых закономерностей',
+          difficulty: 'beginner',
+          durationMin: 7,
+          skills: ['Числовые закономерности'],
+          quest: { slug: 'number-patterns-basics' },
+        },
+        {
+          title: 'Логические задачи',
+          difficulty: 'beginner',
+          durationMin: 10,
+          skills: ['logic-puzzles'],
+          quest: { slug: 'logic-puzzles' },
         },
       ],
     },
@@ -128,13 +153,14 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: '2026-11-15T10:00:00.000Z',
     lastPracticedAt: now.toISOString(),
     masteredAt: now.toISOString(),
+    recommendedQuests: [],
   });
   assert.deepEqual(result.skills[1], {
     id: 'skill-2',
     key: 'number-patterns',
     name: 'Числовые закономерности',
     description: null,
-    difficulty: null,
+    difficulty: 'beginner',
     status: 'not_started',
     available: true,
     prerequisites: [{
@@ -154,6 +180,17 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    recommendedQuests: [{
+      slug: 'number-patterns-basics',
+      title: 'Основы числовых закономерностей',
+      difficulty: 'beginner',
+      durationMin: 7,
+    }, {
+      slug: 'number-patterns-advanced',
+      title: 'Продвинутые числовые закономерности',
+      difficulty: 'advanced',
+      durationMin: 12,
+    }],
   });
   assert.deepEqual(result.skills[2], {
     id: 'skill-3',
@@ -180,6 +217,7 @@ test('returns mastery, evidence counts and a separate not-started state from one
     firstPracticedAt: null,
     lastPracticedAt: null,
     masteredAt: null,
+    recommendedQuests: [],
   });
   assert.deepEqual(result.recentEvidence, [{
     id: 'evidence-1',

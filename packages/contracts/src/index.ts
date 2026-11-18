@@ -34,6 +34,13 @@ export interface PlayerSkillPrerequisite {
   mastered: boolean;
 }
 
+export interface PlayerSkillQuestRecommendation {
+  slug: string;
+  title: string;
+  difficulty: string | null;
+  durationMin: number;
+}
+
 export interface PlayerSkillProgress {
   id: string;
   key: string;
@@ -53,6 +60,7 @@ export interface PlayerSkillProgress {
   firstPracticedAt: string | null;
   lastPracticedAt: string | null;
   masteredAt: string | null;
+  recommendedQuests: PlayerSkillQuestRecommendation[];
 }
 
 export interface PlayerLearningEvidence {

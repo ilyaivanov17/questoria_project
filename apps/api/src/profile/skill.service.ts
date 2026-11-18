@@ -16,7 +16,7 @@ export class SkillService {
 
   async getSkills(profileId: string): Promise<PlayerSkillsResponse> {
     const snapshot = await this.prisma.$transaction(async (tx) => {
-      const [definitions, recentEvidence] = await Promise.all([
+      const [definitions, recentEvidence, publishedVersions] = await Promise.all([
         tx.skill.findMany({
           orderBy: { name: 'asc' },
           select: {
@@ -86,10 +86,106 @@ export class SkillService {
             },
           },
         }),
+        tx.questVersion.findMany({
+          where: {
+            status: 'PUBLISHED',
+            quest: { status: 'PUBLISHED' },
+          },
+          orderBy: [{ title: 'asc' }, { versionNo: 'desc' }],
+          select: {
+            title: true,
+            difficulty: true,
+            durationMin: true,
+            skills: true,
+            quest: { select: { slug: true } },
+          },
+        }),
       ]);
 
-      return { definitions, recentEvidence };
+      return { definitions, recentEvidence, publishedVersions };
     }, { isolationLevel: 'RepeatableRead' });
+
+    const definitionsById = new Map(snapshot.definitions.map((definition) => [definition.id, definition]));
+    const aliases = new Map<string, string[]>();
+    const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
+
+    for (const definition of snapshot.definitions) {
+      for (const alias of [definition.key, definition.name]) {
+        const key = normalize(alias);
+        const matches = aliases.get(key) ?? [];
+        if (!matches.includes(definition.id)) matches.push(definition.id);
+        aliases.set(key, matches);
+      }
+    }
+
+    const prerequisitesAreMastered = (skillId: string, visiting = new Set<string>()): boolean => {
+      if (visiting.has(skillId)) return false;
+      const definition = definitionsById.get(skillId);
+      if (!definition) return false;
+
+      visiting.add(skillId);
+      const mastered = definition.prerequisites.every((edge) => {
+        const prerequisite = definitionsById.get(edge.prerequisite.id);
+        return Boolean(
+          prerequisite
+          && prerequisite.progress[0]?.status === 'MASTERED'
+          && prerequisitesAreMastered(prerequisite.id, visiting),
+        );
+      });
+      visiting.delete(skillId);
+      return mastered;
+    };
+
+    const resolveQuestSkills = (tags: string[]): string[] | null => {
+      const ids: string[] = [];
+      for (const tag of tags) {
+        const matches = aliases.get(normalize(tag)) ?? [];
+        if (matches.length !== 1) return null;
+        if (!ids.includes(matches[0]!)) ids.push(matches[0]!);
+      }
+      return ids.length > 0 ? ids : null;
+    };
+
+    const recommendedQuestsBySkill = new Map<
+      string,
+      PlayerSkillProgress['recommendedQuests']
+    >();
+
+    for (const definition of snapshot.definitions) {
+      const isMastered = definition.progress[0]?.status === 'MASTERED';
+      const recommendations = isMastered || !prerequisitesAreMastered(definition.id)
+        ? []
+        : snapshot.publishedVersions
+          .filter((version) => {
+            const targetSkills = resolveQuestSkills(version.skills);
+            return Boolean(
+              targetSkills
+              && targetSkills.includes(definition.id)
+              && targetSkills.every((skillId) => prerequisitesAreMastered(skillId)),
+            );
+          })
+          .sort((left, right) => {
+            const leftMatchesDifficulty = definition.difficulty !== null
+              && left.difficulty === definition.difficulty;
+            const rightMatchesDifficulty = definition.difficulty !== null
+              && right.difficulty === definition.difficulty;
+            return Number(rightMatchesDifficulty) - Number(leftMatchesDifficulty)
+              || left.title.localeCompare(right.title, 'ru');
+          })
+          .reduce<PlayerSkillProgress['recommendedQuests']>((result, version) => {
+            if (result.some((quest) => quest.slug === version.quest.slug)) return result;
+            result.push({
+              slug: version.quest.slug,
+              title: version.title,
+              difficulty: version.difficulty,
+              durationMin: version.durationMin,
+            });
+            return result;
+          }, [])
+          .slice(0, 3);
+
+      recommendedQuestsBySkill.set(definition.id, recommendations);
+    }
 
     const skills: PlayerSkillProgress[] = snapshot.definitions.map((definition) => {
       const progress = definition.progress[0];
@@ -100,9 +196,7 @@ export class SkillService {
         description: definition.description,
         difficulty: definition.difficulty,
         status: (progress?.status.toLowerCase() ?? 'not_started') as PlayerSkillStatus,
-        available: definition.prerequisites.every((edge) => (
-          edge.prerequisite.progress[0]?.status === 'MASTERED'
-        )),
+        available: prerequisitesAreMastered(definition.id),
         prerequisites: definition.prerequisites.map((edge) => {
           const prerequisiteProgress = edge.prerequisite.progress[0];
           const status = (prerequisiteProgress?.status.toLowerCase() ?? 'not_started') as PlayerSkillStatus;
@@ -124,6 +218,7 @@ export class SkillService {
         firstPracticedAt: progress?.firstPracticedAt?.toISOString() ?? null,
         lastPracticedAt: progress?.lastPracticedAt?.toISOString() ?? null,
         masteredAt: progress?.masteredAt?.toISOString() ?? null,
+        recommendedQuests: recommendedQuestsBySkill.get(definition.id) ?? [],
       };
     });
 
