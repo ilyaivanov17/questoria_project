@@ -158,3 +158,44 @@ export interface AdminLearningAnalytics {
     qualitySignals: Array<'LOW_SAMPLE_SIZE' | 'LOW_SUCCESS_RATE' | 'LOW_TASK_DIVERSITY'>;
   }>;
 }
+
+
+export interface AdminTaskLearningAnalytics {
+  generatedAt: string;
+  totals: {
+    puzzleSkillPairs: number;
+    attempts: number;
+    learners: number;
+    flagged: number;
+  };
+  tasks: Array<{
+    puzzleId: string;
+    puzzleOrder: number | null;
+    puzzleType: string | null;
+    levelOrder: number | null;
+    levelTitle: string | null;
+    questVersionId: string | null;
+    questVersion: number | null;
+    questTitle: string | null;
+    questSlug: string | null;
+    skillId: string;
+    skillKey: string | null;
+    skillName: string | null;
+    attempts: number;
+    successful: number;
+    successRate: number | null;
+    learners: number;
+    taskTypeCount: number;
+    masteryDiscrimination: {
+      mastered: { attempts: number; learners: number; successRate: number | null };
+      notMastered: { attempts: number; learners: number; successRate: number | null };
+      successRateGap: number | null;
+    };
+    qualitySignals: Array<'LOW_SAMPLE_SIZE' | 'LOW_SUCCESS_RATE' | 'LOW_MASTERY_SEPARATION'>;
+  }>;
+  notes: {
+    masteryCohorts: string;
+    lowMasterySeparation: string;
+  };
+}
+
