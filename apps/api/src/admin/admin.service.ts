@@ -134,6 +134,26 @@ export class AdminService {
     });
   }
 
+  async listQuestReviewers(): Promise<object[]> {
+    const reviewers = await this.prisma.user.findMany({
+      where: {
+        status: 'ACTIVE',
+        roles: { some: { role: { key: { in: ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'] } } } },
+      },
+      orderBy: { emailNormalized: 'asc' },
+      select: {
+        id: true,
+        emailNormalized: true,
+        profile: { select: { nickname: true } },
+      },
+    });
+    return reviewers.map((reviewer) => ({
+      id: reviewer.id,
+      email: reviewer.emailNormalized,
+      nickname: reviewer.profile?.nickname ?? null,
+    }));
+  }
+
   async listQuests(user: AuthenticatedUser): Promise<object[]> {
     const authorOnly = !canViewAllQuestVersions(user);
     const quests = await this.prisma.quest.findMany({
@@ -156,7 +176,9 @@ export class AdminService {
           take: 1,
           select: {
             id: true, versionNo: true, title: true, status: true, updatedAt: true, authorId: true,
+            reviewerId: true,
             author: { select: { emailNormalized: true, profile: { select: { nickname: true } } } },
+            reviewer: { select: { emailNormalized: true, profile: { select: { nickname: true } } } },
           },
         },
       },
@@ -178,10 +200,17 @@ export class AdminService {
           status: quest.versions[0].status,
           updatedAt: quest.versions[0].updatedAt,
           ...(authorOnly ? {} : {
+            reviewerId: quest.versions[0].reviewerId,
             author: quest.versions[0].author
               ? {
                 email: quest.versions[0].author.emailNormalized,
                 nickname: quest.versions[0].author.profile?.nickname ?? null,
+              }
+              : null,
+            reviewer: quest.versions[0].reviewer
+              ? {
+                email: quest.versions[0].reviewer.emailNormalized,
+                nickname: quest.versions[0].reviewer.profile?.nickname ?? null,
               }
               : null,
           }),
@@ -1054,6 +1083,102 @@ export class AdminService {
         versionId: updated.id, versionNo: updated.versionNo, status: updated.status,
       });
       return { id, versionId: updated.id, versionNo: updated.versionNo, status: updated.status };
+    });
+  }
+
+  async assignQuestReviewer(
+    actor: AuthenticatedUser,
+    questId: string,
+    reviewerId: string | null,
+  ): Promise<object> {
+    if (!canViewAllQuestVersions(actor)) {
+      throw new ForbiddenException('Only reviewers and administrators can assign quest reviewers.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.questVersion.findFirst({
+        where: { questId, status: 'REVIEW' },
+        orderBy: { versionNo: 'desc' },
+        select: {
+          id: true,
+          questId: true,
+          versionNo: true,
+          status: true,
+          authorId: true,
+          reviewerId: true,
+        },
+      });
+      if (!version) throw new ConflictException('A quest in REVIEW state was not found.');
+
+      const reviewer = reviewerId
+        ? await tx.user.findFirst({
+          where: {
+            id: reviewerId,
+            status: 'ACTIVE',
+            roles: { some: { role: { key: { in: ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'] } } } },
+          },
+          select: {
+            id: true,
+            emailNormalized: true,
+            profile: { select: { nickname: true } },
+          },
+        })
+        : null;
+      if (reviewerId && !reviewer) {
+        throw new BadRequestException('Choose an active user with a reviewer or administrator role.');
+      }
+      if (reviewer && version.authorId === reviewer.id) {
+        throw new ConflictException('The quest author cannot review their own version.');
+      }
+
+      if (version.reviewerId === reviewerId) {
+        return {
+          id: questId,
+          versionId: version.id,
+          versionNo: version.versionNo,
+          status: version.status,
+          reviewerId,
+          reviewer: reviewer ? {
+            id: reviewer.id,
+            email: reviewer.emailNormalized,
+            nickname: reviewer.profile?.nickname ?? null,
+          } : null,
+          changed: false,
+        };
+      }
+
+      const updated = await tx.questVersion.updateMany({
+        where: { id: version.id, status: 'REVIEW' },
+        data: { reviewerId },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException('This quest version has already left the review queue. Refresh the editorial queue.');
+      }
+
+      await this.audit(tx, actor.userId, 'quest.reviewer.assigned', 'QUEST', questId, {
+        versionId: version.id,
+        versionNo: version.versionNo,
+        reviewerId: version.reviewerId,
+      }, {
+        versionId: version.id,
+        versionNo: version.versionNo,
+        reviewerId,
+        reviewerEmail: reviewer?.emailNormalized ?? null,
+      });
+
+      return {
+        id: questId,
+        versionId: version.id,
+        versionNo: version.versionNo,
+        status: version.status,
+        reviewerId,
+        reviewer: reviewer ? {
+          id: reviewer.id,
+          email: reviewer.emailNormalized,
+          nickname: reviewer.profile?.nickname ?? null,
+        } : null,
+        changed: true,
+      };
     });
   }
 

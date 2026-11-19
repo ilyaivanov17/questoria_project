@@ -7,11 +7,14 @@ import { QuestEditor, type CmsQuestDetail, type CmsSkillOption, type QuestEditor
 type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled: boolean; sessionMfaVerified: boolean };
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type QuestAuthor = { email: string; nickname: string | null };
+type QuestReviewer = { id: string; email: string; nickname: string | null };
 type Quest = {
   id: string; slug: string; status: string; canEditDraft: boolean;
   category: { title: string; slug: string };
   latestVersion: {
     versionNo: number; title: string; status: string; updatedAt: string;
+    reviewerId?: string | null;
+    reviewer?: Omit<QuestReviewer, 'id'> | null;
     author?: QuestAuthor | null;
   } | null;
 };
@@ -135,6 +138,8 @@ export function AdminClient() {
   const [questSearch, setQuestSearch] = useState('');
   const [questStatusFilter, setQuestStatusFilter] = useState('');
   const [questAuthorFilter, setQuestAuthorFilter] = useState('');
+  const [questReviewerFilter, setQuestReviewerFilter] = useState('');
+  const [reviewers, setReviewers] = useState<QuestReviewer[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditSkip, setAuditSkip] = useState(0);
@@ -185,18 +190,21 @@ export function AdminClient() {
       setIdentity(result.user);
       const adminNeedsMfa = result.user.roleKeys.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r));
       if (!adminNeedsMfa || (result.user.mfaEnabled && result.user.sessionMfaVerified)) {
-        const [cats, qs, skillCatalog, members] = await Promise.all([
+        const canReviewContent = result.user.roleKeys.some((role) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(role));
+        const [cats, qs, skillCatalog, members, reviewerOptions] = await Promise.all([
           api<Category[]>('/admin/categories'),
           api<Quest[]>('/admin/quests'),
           api<CmsSkillOption[]>('/admin/skills'),
           result.user.roleKeys.includes('SUPER_ADMIN')
             ? api<ManagedUser[]>('/admin/users')
             : Promise.resolve([] as ManagedUser[]),
+          canReviewContent ? api<QuestReviewer[]>('/admin/reviewers') : Promise.resolve([] as QuestReviewer[]),
         ]);
         setCategories(cats);
         setQuests(qs);
         setSkillOptions(skillCatalog);
         setManagedUsers(members);
+        setReviewers(reviewerOptions);
         if (result.user.mfaEnabled && result.user.sessionMfaVerified) {
           const recoveryStatus = await api<{ remaining: number }>('/admin/mfa/recovery-codes/status');
           setRecoveryCodeCount(recoveryStatus.remaining);
@@ -364,6 +372,13 @@ export function AdminClient() {
       setEditor(null);
       setVersionHistory([]);
     }
+  }
+
+  async function assignQuestReviewer(quest: Quest, reviewerId: string | null) {
+    await action(() => api(`/admin/quests/${quest.id}/reviewer`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reviewerId }),
+    }), reviewerId ? 'Рецензент назначен.' : 'Назначение рецензента снято.');
   }
 
   async function assignManagedRole(user: ManagedUser) {
@@ -551,7 +566,10 @@ export function AdminClient() {
         .some((value) => value.toLocaleLowerCase('ru-RU').includes(term));
       return matchesSearch
         && (!questStatusFilter || status === questStatusFilter)
-        && (!questAuthorFilter || quest.latestVersion?.author?.email === questAuthorFilter);
+        && (!questAuthorFilter || quest.latestVersion?.author?.email === questAuthorFilter)
+        && (!questReviewerFilter || (questReviewerFilter === 'unassigned'
+          ? !quest.latestVersion?.reviewerId
+          : quest.latestVersion?.reviewerId === questReviewerFilter));
     })
     .sort((left, right) => {
       const rank: Record<string, number> = { REVIEW: 0, DRAFT: 1, APPROVED: 2, PUBLISHED: 3, ARCHIVED: 4 };
@@ -755,13 +773,28 @@ export function AdminClient() {
             <option value="">Все авторы</option>{questAuthors.map((author) => <option key={author.email} value={author.email}>{author.label}</option>)}
           </select>
         </label>}
+        {canReview && <label className="field"><span>Рецензент</span>
+          <select value={questReviewerFilter} onChange={(event) => setQuestReviewerFilter(event.target.value)}>
+            <option value="">Все рецензенты</option>
+            <option value="unassigned">Без назначения</option>
+            {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.nickname || reviewer.email}</option>)}
+          </select>
+        </label>}
         <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые долго ожидающие.</p>
       </div>
       <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
         <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
           {canReview && quest.latestVersion?.author && <small className="muted-copy">Автор: {quest.latestVersion.author.nickname || quest.latestVersion.author.email} · обновлено {new Date(quest.latestVersion.updatedAt).toLocaleString('ru-RU')}</small>}
+          {canReview && status === 'REVIEW' && <small className="muted-copy">Рецензент: {quest.latestVersion?.reviewer?.nickname || quest.latestVersion?.reviewer?.email || 'не назначен'}</small>}
         </div>
         <div className="admin-row-actions"><span className={`admin-status status-${status.toLowerCase()}`}>{status}</span>
+          {status === 'REVIEW' && canReview && <label className="field admin-reviewer-assignment"><span className="visually-hidden">Рецензент для {quest.slug}</span>
+            <select aria-label={`Рецензент для ${quest.slug}`} value={quest.latestVersion?.reviewerId ?? ''} disabled={busy}
+              onChange={(event) => void assignQuestReviewer(quest, event.target.value || null)}>
+              <option value="">Без назначения</option>
+              {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.nickname || reviewer.email}</option>)}
+            </select>
+          </label>}
           {status === 'PUBLISHED' && canAuthor && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">Новая версия</button>}
           {status === 'DRAFT' && quest.canEditDraft && <button className="button button-small button-secondary" disabled={busy} onClick={() => void openQuestEditor(quest, 'edit')} type="button">Открыть редактор</button>}
           {status === 'DRAFT' && quest.canEditDraft && <button className="button button-small button-secondary" disabled={busy} onClick={() => workflow(quest, status)} type="button">На рецензию</button>}
