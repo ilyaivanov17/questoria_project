@@ -13,6 +13,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -264,4 +265,10 @@ export class RequestQuestChangesDto {
   @IsString()
   @Length(10, 2000)
   feedback!: string;
+}
+
+export class AssignQuestReviewerDto {
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID()
+  reviewerId!: string | null;
 }

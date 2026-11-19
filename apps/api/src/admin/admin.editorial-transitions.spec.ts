@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -455,5 +455,138 @@ test('a stale publication is rejected without changing quest status or writing a
     ConflictException,
   );
   assert.equal(questUpdates, 0);
+  assert.equal(auditCount, 0);
+});
+
+
+test('a reviewer can assign an active reviewer to a REVIEW version and the change is audited', async () => {
+  let transitionQuery: Record<string, unknown> | undefined;
+  let auditInput: Record<string, unknown> | undefined;
+  const version = {
+    id: 'version-1',
+    questId: 'quest-1',
+    versionNo: 4,
+    status: 'REVIEW',
+    authorId: author.userId,
+    reviewerId: null,
+  };
+  const targetReviewer = {
+    id: 'reviewer-2',
+    emailNormalized: 'reviewer2@example.test',
+    profile: { nickname: 'Reviewer Two' },
+  };
+  const tx = {
+    questVersion: {
+      findFirst: async () => version,
+      updateMany: async (query: Record<string, unknown>) => {
+        transitionQuery = query;
+        return { count: 1 };
+      },
+    },
+    user: { findFirst: async () => targetReviewer },
+    adminAuditLog: {
+      create: async (query: Record<string, unknown>) => { auditInput = query; return {}; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  const result = await service.assignQuestReviewer(reviewer, 'quest-1', targetReviewer.id);
+
+  assert.deepEqual(transitionQuery?.where, { id: 'version-1', status: 'REVIEW' });
+  assert.deepEqual(transitionQuery?.data, { reviewerId: targetReviewer.id });
+  assert.deepEqual(result, {
+    id: 'quest-1',
+    versionId: 'version-1',
+    versionNo: 4,
+    status: 'REVIEW',
+    reviewerId: targetReviewer.id,
+    reviewer: { id: targetReviewer.id, email: targetReviewer.emailNormalized, nickname: 'Reviewer Two' },
+    changed: true,
+  });
+  assert.equal((auditInput?.data as { action: string }).action, 'quest.reviewer.assigned');
+  assert.equal((auditInput?.data as { afterJson: { reviewerId: string } }).afterJson.reviewerId, targetReviewer.id);
+});
+
+test('authors cannot assign reviewers', async () => {
+  let transactionStarted = false;
+  const service = makeTransactionService({
+    $transaction: async () => { transactionStarted = true; },
+  });
+
+  await assert.rejects(
+    () => service.assignQuestReviewer(author, 'quest-1', 'reviewer-2'),
+    ForbiddenException,
+  );
+  assert.equal(transactionStarted, false);
+});
+
+test('a quest author cannot be assigned as its own reviewer', async () => {
+  let transitionCount = 0;
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1', questId: 'quest-1', versionNo: 4,
+        status: 'REVIEW', authorId: author.userId, reviewerId: null,
+      }),
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+    user: { findFirst: async () => ({
+      id: author.userId, emailNormalized: author.email, profile: null,
+    }) },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.assignQuestReviewer(reviewer, 'quest-1', author.userId),
+    ConflictException,
+  );
+  assert.equal(transitionCount, 0);
+  assert.equal(auditCount, 0);
+});
+
+test('an inactive user or user without a reviewer role cannot be assigned', async () => {
+  let transitionCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1', questId: 'quest-1', versionNo: 4,
+        status: 'REVIEW', authorId: author.userId, reviewerId: null,
+      }),
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+    user: { findFirst: async () => null },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.assignQuestReviewer(reviewer, 'quest-1', 'inactive-user'),
+    BadRequestException,
+  );
+  assert.equal(transitionCount, 0);
+});
+
+test('a stale reviewer assignment is rejected without an audit event', async () => {
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findFirst: async () => ({
+        id: 'version-1', questId: 'quest-1', versionNo: 4,
+        status: 'REVIEW', authorId: author.userId, reviewerId: null,
+      }),
+      updateMany: async () => ({ count: 0 }),
+    },
+    user: { findFirst: async () => ({
+      id: 'reviewer-2', emailNormalized: 'reviewer2@example.test', profile: null,
+    }) },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.assignQuestReviewer(reviewer, 'quest-1', 'reviewer-2'),
+    ConflictException,
+  );
   assert.equal(auditCount, 0);
 });
