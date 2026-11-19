@@ -28,6 +28,12 @@ enum QuestVersionStatus {
   ARCHIVED
 }
 
+enum QuestEditorialNotificationType {
+  CHANGES_REQUESTED
+  APPROVED
+  PUBLISHED
+}
+
 enum QuestRunStatus {
   IN_PROGRESS
   COMPLETED
@@ -79,6 +85,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   mfaRecoveryCodes MfaRecoveryCode[]
   auditLogs AdminAuditLog[]
+  editorialNotifications QuestEditorialNotification[] @relation("QuestEditorialNotificationRecipient")
 
   @@map("users")
 }
@@ -194,6 +201,7 @@ model Quest {
   status    ContentStatus @default(DRAFT)
   category  Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   versions  QuestVersion[]
+  editorialNotifications QuestEditorialNotification[]
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
 
@@ -238,6 +246,7 @@ model QuestVersion {
   runs        QuestRun[]
   completions QuestCompletion[]
   learningEvidence LearningEvidence[]
+  editorialNotifications QuestEditorialNotification[]
   createdAt   DateTime           @default(now()) @map("created_at")
 
   @@unique([questId, versionNo])
@@ -511,4 +520,23 @@ model AdminAuditLog {
   @@index([entityType, entityId, createdAt])
   @@index([actorUserId, createdAt])
   @@map("admin_audit_logs")
+}
+
+
+model QuestEditorialNotification {
+  id             String                           @id @default(uuid()) @db.Uuid
+  recipientId    String                           @db.Uuid @map("recipient_id")
+  questId        String                           @db.Uuid @map("quest_id")
+  questVersionId String                           @db.Uuid @map("quest_version_id")
+  type           QuestEditorialNotificationType
+  message        String
+  readAt         DateTime?                        @map("read_at")
+  createdAt      DateTime                         @default(now()) @map("created_at")
+  recipient      User                             @relation("QuestEditorialNotificationRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  quest          Quest                            @relation(fields: [questId], references: [id], onDelete: Restrict)
+  questVersion   QuestVersion                     @relation(fields: [questVersionId], references: [id], onDelete: Restrict)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([questId, createdAt])
+  @@map("quest_editorial_notifications")
 }

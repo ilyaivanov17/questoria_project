@@ -1227,6 +1227,13 @@ export class AdminService {
         status: updated.status,
         feedback: comment,
       }, comment);
+      await this.notifyQuestAuthor(tx, {
+        authorId: version.authorId,
+        questId: id,
+        questVersionId: version.id,
+        type: 'CHANGES_REQUESTED',
+        message: comment,
+      });
       return {
         id,
         versionId: updated.id,
@@ -1265,6 +1272,13 @@ export class AdminService {
       await this.audit(tx, user.userId, 'quest.approved', 'QUEST', id, {
         versionId: version.id, status: version.status,
       }, { versionId: updated.id, status: updated.status, reviewerId: user.userId });
+      await this.notifyQuestAuthor(tx, {
+        authorId: version.authorId,
+        questId: id,
+        questVersionId: version.id,
+        type: 'APPROVED',
+        message: `Версия v${version.versionNo} одобрена и ожидает публикации.`,
+      });
       return { id, versionId: updated.id, versionNo: updated.versionNo, status: updated.status };
     });
   }
@@ -1326,8 +1340,62 @@ export class AdminService {
       }, {
         versionId: updatedVersion.id, versionNo: updatedVersion.versionNo, status: updatedVersion.status,
       });
+      await this.notifyQuestAuthor(tx, {
+        authorId: version.authorId,
+        questId: id,
+        questVersionId: version.id,
+        type: 'PUBLISHED',
+        message: `Версия v${version.versionNo} опубликована и доступна в каталоге.`,
+      });
       return { id, versionId: updatedVersion.id, versionNo: updatedVersion.versionNo, status: updatedVersion.status };
     });
+  }
+
+  async listEditorialNotifications(user: AuthenticatedUser): Promise<object> {
+    const where = { recipientId: user.userId };
+    const [items, unreadCount] = await this.prisma.$transaction([
+      this.prisma.questEditorialNotification.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 50,
+        select: {
+          id: true,
+          type: true,
+          message: true,
+          readAt: true,
+          createdAt: true,
+          quest: { select: { id: true, slug: true } },
+          questVersion: { select: { id: true, versionNo: true, title: true } },
+        },
+      }),
+      this.prisma.questEditorialNotification.count({
+        where: { ...where, readAt: null },
+      }),
+    ]);
+    return { items, unreadCount };
+  }
+
+  async markEditorialNotificationRead(user: AuthenticatedUser, id: string): Promise<object> {
+    const updated = await this.prisma.questEditorialNotification.updateMany({
+      where: { id, recipientId: user.userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    if (updated.count === 1) return { id, read: true, changed: true };
+
+    const existing = await this.prisma.questEditorialNotification.findFirst({
+      where: { id, recipientId: user.userId },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Notification not found.');
+    return { id, read: true, changed: false };
+  }
+
+  async markAllEditorialNotificationsRead(user: AuthenticatedUser): Promise<object> {
+    const updated = await this.prisma.questEditorialNotification.updateMany({
+      where: { recipientId: user.userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { updatedCount: updated.count };
   }
 
   async listAuditLogs(
@@ -2044,6 +2112,28 @@ export class AdminService {
       && error !== null
       && 'code' in error
       && (error as { code?: unknown }).code === code;
+  }
+
+  private async notifyQuestAuthor(
+    tx: Transaction,
+    notification: {
+      authorId: string | null;
+      questId: string;
+      questVersionId: string;
+      type: 'CHANGES_REQUESTED' | 'APPROVED' | 'PUBLISHED';
+      message: string;
+    },
+  ): Promise<void> {
+    if (!notification.authorId) return;
+    await tx.questEditorialNotification.create({
+      data: {
+        recipientId: notification.authorId,
+        questId: notification.questId,
+        questVersionId: notification.questVersionId,
+        type: notification.type,
+        message: notification.message,
+      },
+    });
   }
 
   private async audit(
