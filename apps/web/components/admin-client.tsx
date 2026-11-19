@@ -892,9 +892,9 @@ export function AdminClient() {
             <input type="checkbox" checked={allVisibleReviewQuestsSelected}
               onChange={(event) => setSelectedReviewQuestIds((current) => event.target.checked
                 ? [...current, ...visibleReviewQuestIds.filter((id) => !current.includes(id)).slice(0, Math.max(0, 25 - current.length))]
-                : current.filter((id) => !visibleReviewQuestIds.includes(id))}
+                : current.filter((id) => !visibleReviewQuestIds.includes(id)))}
               disabled={busy}/>
-            Выбрать все видимые ({visibleReviewQuestIds.length})
+            Выбрать видимые (до 25 всего)
           </span>
         </label>
         <label className="field">
