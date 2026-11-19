@@ -17,7 +17,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
-import { AssignQuestReviewerDto, BulkAssignQuestReviewerDto, CreateQuestDto, RequestQuestChangesDto, UpdateQuestDto } from './dto/quest.dto.js';
+import { AssignQuestReviewerDto, BulkAssignQuestReviewerDto, BulkSubmitQuestReviewDto, CreateQuestDto, RequestQuestChangesDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { AssignUserRoleDto, RemoveUserRoleDto, RevokeUserSessionDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
@@ -188,6 +188,15 @@ export class AdminContentController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<object> {
     return this.admin.submitForReview(request.authUser as AuthenticatedUser, id);
+  }
+
+  @Post('quests/bulk-submit-review')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  bulkSubmitForReview(
+    @Req() request: Request,
+    @Body() dto: BulkSubmitQuestReviewDto,
+  ): Promise<object> {
+    return this.admin.bulkSubmitForReview(request.authUser as AuthenticatedUser, dto.questIds);
   }
 
   @Patch('quests/:id/reviewer')

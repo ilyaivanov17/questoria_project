@@ -1086,6 +1086,123 @@ export class AdminService {
     });
   }
 
+  async bulkSubmitForReview(user: AuthenticatedUser, questIds: string[]): Promise<object> {
+    if (!Array.isArray(questIds) || questIds.length < 1 || questIds.length > 25) {
+      throw new BadRequestException('Select between 1 and 25 quests.');
+    }
+    if (new Set(questIds).size !== questIds.length) {
+      throw new BadRequestException('A quest can only be selected once.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const versionsByQuestId = new Map<string, Awaited<ReturnType<AdminService['getLatestDraftVersion']>>>();
+      const itemsByQuestId = new Map<string, {
+        questId: string;
+        versionId: string | null;
+        versionNo: number | null;
+        title: string | null;
+        ready: boolean;
+        errors: string[];
+      }>();
+
+      // Lock drafts in a stable order to reduce deadlocks for overlapping batches.
+      for (const questId of [...questIds].sort()) {
+        let version: Awaited<ReturnType<AdminService['getLatestDraftVersion']>>;
+        try {
+          version = await this.getLatestDraftVersion(questId, tx);
+        } catch (error) {
+          if (!(error instanceof ConflictException)) throw error;
+          itemsByQuestId.set(questId, {
+            questId, versionId: null, versionNo: null, title: null, ready: false,
+            errors: ['A current draft version was not found. Refresh the quest list.'],
+          });
+          continue;
+        }
+
+        const lockedVersion = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "quest_versions"
+          WHERE "id" = ${version.id}::uuid
+            AND "status" = 'DRAFT'
+          FOR UPDATE
+        `;
+        if (lockedVersion.length !== 1) {
+          itemsByQuestId.set(questId, {
+            questId, versionId: version.id, versionNo: version.versionNo, title: version.title,
+            ready: false, errors: ['The draft changed or is no longer available. Refresh the quest list.'],
+          });
+          continue;
+        }
+
+        try {
+          version = await this.getLatestDraftVersion(questId, tx);
+        } catch (error) {
+          if (!(error instanceof ConflictException)) throw error;
+          itemsByQuestId.set(questId, {
+            questId, versionId: null, versionNo: null, title: null, ready: false,
+            errors: ['The draft changed during validation. Refresh the quest list.'],
+          });
+          continue;
+        }
+        if (version.id !== lockedVersion[0]!.id) {
+          itemsByQuestId.set(questId, {
+            questId, versionId: version.id, versionNo: version.versionNo, title: version.title,
+            ready: false, errors: ['A newer draft appeared during validation. Refresh the quest list.'],
+          });
+          continue;
+        }
+        if (!canManageQuestDraft(user, version.authorId)) {
+          throw new ForbiddenException('You can submit only your own drafts or drafts managed by an administrator.');
+        }
+
+        const readiness = await this.checkPublishReadiness(version, tx);
+        itemsByQuestId.set(questId, {
+          questId,
+          versionId: version.id,
+          versionNo: version.versionNo,
+          title: version.title,
+          ready: readiness.errors.length === 0,
+          errors: readiness.errors,
+        });
+        versionsByQuestId.set(questId, version);
+      }
+
+      const items = questIds.map((questId) => itemsByQuestId.get(questId)!);
+      const blockedCount = items.filter((item) => !item.ready).length;
+      if (blockedCount > 0) {
+        // Nothing is transitioned when any selected draft fails validation.
+        return { success: false, submittedCount: 0, blockedCount, items };
+      }
+
+      for (const questId of questIds) {
+        const version = versionsByQuestId.get(questId)!;
+        const transitioned = await tx.questVersion.updateMany({
+          where: { id: version.id, status: 'DRAFT' },
+          data: {
+            status: 'REVIEW',
+            reviewerId: null,
+            reviewFeedback: null,
+            approvedAt: null,
+            approvedById: null,
+          },
+        });
+        if (transitioned.count !== 1) {
+          throw new ConflictException(
+            'A selected draft changed while the batch was being submitted. No quests were submitted; refresh and try again.',
+          );
+        }
+
+        await this.audit(tx, user.userId, 'quest.submitted_for_review', 'QUEST', questId, version, {
+          versionId: version.id,
+          versionNo: version.versionNo,
+          status: 'REVIEW',
+        });
+      }
+
+      return { success: true, submittedCount: items.length, blockedCount: 0, items };
+    });
+  }
+
   async assignQuestReviewer(
     actor: AuthenticatedUser,
     questId: string,
