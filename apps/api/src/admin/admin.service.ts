@@ -190,6 +190,62 @@ export class AdminService {
     }));
   }
 
+  async getQuestVersions(user: AuthenticatedUser, id: string): Promise<object> {
+    const authorOnly = !canViewAllQuestVersions(user);
+    const quest = await this.prisma.quest.findFirst({
+      where: {
+        id,
+        ...(authorOnly
+          ? {
+            OR: [
+              { status: 'PUBLISHED' },
+              { versions: { some: { authorId: user.userId } } },
+            ],
+          }
+          : {}),
+      },
+      include: {
+        category: true,
+        versions: {
+          where: authorOnly
+            ? { OR: [{ authorId: user.userId }, { status: 'PUBLISHED' }] }
+            : {},
+          orderBy: { versionNo: 'desc' },
+          include: {
+            levels: {
+              orderBy: { orderNo: 'asc' },
+              include: {
+                puzzles: {
+                  orderBy: { orderNo: 'asc' },
+                  include: { hints: { orderBy: { orderNo: 'asc' } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!quest) throw new NotFoundException('Quest not found.');
+
+    return {
+      ...quest,
+      versions: quest.versions.map((version) => {
+        if (!authorOnly || version.authorId === user.userId) return version;
+        return {
+          ...version,
+          levels: version.levels.map((level) => ({
+            ...level,
+            puzzles: level.puzzles.map((puzzle) => {
+              const safePuzzle = { ...puzzle };
+              Reflect.deleteProperty(safePuzzle, 'solutionPrivate');
+              return safePuzzle;
+            }),
+          })),
+        };
+      }),
+    };
+  }
+
   async getQuest(user: AuthenticatedUser, id: string): Promise<object> {
     const authorOnly = !canViewAllQuestVersions(user);
     const quest = await this.prisma.quest.findFirst({

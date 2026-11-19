@@ -23,6 +23,62 @@ type Audit = {
 type AuditPage = { items: Audit[]; total: number; take: number; skip: number };
 type AuditExport = { items: Audit[]; total: number; exported: number; limit: number; truncated: boolean };
 type AuditFilters = { q: string; action: string; actor: string; entityType: string; from: string; to: string };
+type CmsVersion = CmsQuestDetail['versions'][number];
+
+function compareQuestVersions(older: CmsVersion, newer: CmsVersion): string[] {
+  const changes: string[] = [];
+  const fields: Array<[string, keyof CmsVersion]> = [
+    ['Название', 'title'], ['Краткое описание', 'summary'], ['Описание', 'description'],
+    ['Сложность', 'difficulty'], ['Длительность', 'durationMin'],
+    ['Возраст от', 'ageMin'], ['Возраст до', 'ageMax'],
+    ['Язык', 'locale'], ['SEO', 'seo'], ['Цели обучения', 'objectives'], ['Навыки', 'skills'],
+  ];
+  for (const [label, key] of fields) {
+    if (JSON.stringify(older[key]) !== JSON.stringify(newer[key])) changes.push(`Изменено: ${label.toLowerCase()}.`);
+  }
+  const oldLevels = older.levels ?? [];
+  const newLevels = newer.levels ?? [];
+  if (oldLevels.length !== newLevels.length) {
+    changes.push(`Уровней: ${oldLevels.length} → ${newLevels.length}.`);
+  }
+  const puzzleCount = (version: CmsVersion) => version.levels.reduce((sum, level) => sum + level.puzzles.length, 0);
+  const oldPuzzleCount = puzzleCount(older);
+  const newPuzzleCount = puzzleCount(newer);
+  if (oldPuzzleCount !== newPuzzleCount) changes.push(`Заданий: ${oldPuzzleCount} → ${newPuzzleCount}.`);
+  const oldLevelsByOrder = new Map(oldLevels.map((level) => [level.orderNo, level]));
+  const newLevelsByOrder = new Map(newLevels.map((level) => [level.orderNo, level]));
+  for (const level of newLevels) {
+    const previous = oldLevelsByOrder.get(level.orderNo);
+    if (!previous) {
+      changes.push(`Добавлен уровень ${level.orderNo}: «${level.title}».`);
+      continue;
+    }
+    if (previous.title !== level.title || previous.intro !== level.intro) {
+      changes.push(`Изменён уровень ${level.orderNo}: «${level.title}».`);
+    }
+    const oldPuzzles = new Map(previous.puzzles.map((puzzle) => [puzzle.orderNo, puzzle]));
+    for (const puzzle of level.puzzles) {
+      const oldPuzzle = oldPuzzles.get(puzzle.orderNo);
+      if (!oldPuzzle) changes.push(`Добавлено задание ${level.orderNo}.${puzzle.orderNo}.`);
+      else if (oldPuzzle.type !== puzzle.type
+        || JSON.stringify(oldPuzzle.publicPayload) !== JSON.stringify(puzzle.publicPayload)
+        || JSON.stringify(oldPuzzle.solutionPrivate) !== JSON.stringify(puzzle.solutionPrivate)
+        || JSON.stringify(oldPuzzle.hints) !== JSON.stringify(puzzle.hints)) {
+        changes.push(`Изменено задание ${level.orderNo}.${puzzle.orderNo}.`);
+      }
+    }
+    for (const oldPuzzle of previous.puzzles) {
+      if (!level.puzzles.some((puzzle) => puzzle.orderNo === oldPuzzle.orderNo)) {
+        changes.push(`Удалено задание ${level.orderNo}.${oldPuzzle.orderNo}.`);
+      }
+    }
+  }
+  for (const level of oldLevels) {
+    if (!newLevelsByOrder.has(level.orderNo)) changes.push(`Удалён уровень ${level.orderNo}: «${level.title}».`);
+  }
+  return changes.length ? changes : ['Содержимое редакции не изменилось.'];
+}
+
 const AUDIT_PAGE_SIZE = 30;
 
 function auditQueryString(filters: AuditFilters, take?: number, skip?: number): string {
@@ -117,6 +173,9 @@ export function AdminClient() {
   const [skillOptions, setSkillOptions] = useState<CmsSkillOption[]>([]);
   const [editor, setEditor] = useState<{ mode: 'new' | 'edit' | 'review'; quest?: CmsQuestDetail } | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
+  const [versionHistory, setVersionHistory] = useState<CmsVersion[]>([]);
+  const [compareFromId, setCompareFromId] = useState('');
+  const [compareToId, setCompareToId] = useState('');
   const [reviewFeedback, setReviewFeedback] = useState('');
 
   const load = useCallback(async () => {
@@ -257,8 +316,14 @@ export function AdminClient() {
     setEditorLoading(true);
     setError('');
     try {
-      const detail = await api<CmsQuestDetail>('/admin/quests/' + quest.id);
+      const [detail, history] = await Promise.all([
+        api<CmsQuestDetail>('/admin/quests/' + quest.id),
+        api<CmsQuestDetail>('/admin/quests/' + quest.id + '/versions'),
+      ]);
       setReviewFeedback('');
+      setVersionHistory(history.versions);
+      setCompareFromId(history.versions[1]?.id ?? history.versions[0]?.id ?? '');
+      setCompareToId(history.versions[0]?.id ?? '');
       setEditor({ mode, quest: detail });
       document.getElementById('admin-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
@@ -297,6 +362,7 @@ export function AdminClient() {
     if (result) {
       setReviewFeedback('');
       setEditor(null);
+      setVersionHistory([]);
     }
   }
 
@@ -716,6 +782,44 @@ export function AdminClient() {
         {canAuthor && <button className="button button-primary" type="button" onClick={() => setEditor({ mode: 'new' })}>Новый квест</button>}
       </div>
       {editorLoading && <p className="admin-empty" aria-live="polite">Загружаем версию…</p>}
+      {!editorLoading && editor && versionHistory.length > 0 && <div className="admin-version-history">
+        <div className="admin-section-title">
+          <div><h3>История версий</h3><p className="admin-section-description">Редакции показаны от новой к старой. Выбери две версии, чтобы увидеть структурную сводку изменений.</p></div>
+          <span className="admin-count">{versionHistory.length}</span>
+        </div>
+        <ol className="admin-version-list">
+          {versionHistory.map((version) => <li key={version.id}>
+            <strong>v{version.versionNo} · {version.title}</strong>
+            <span className={`admin-status status-${version.status.toLowerCase()}`}>{version.status}</span>
+            <small>{new Date(version.updatedAt).toLocaleString('ru-RU')}</small>
+          </li>)}
+        </ol>
+        {versionHistory.length > 1 && <div className="admin-version-compare">
+          <label className="field"><span>Сравнить с версией</span>
+            <select value={compareFromId} onChange={(event) => setCompareFromId(event.target.value)}>
+              {versionHistory.map((version) => <option key={version.id} value={version.id}>v{version.versionNo} · {version.title}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Текущая версия сравнения</span>
+            <select value={compareToId} onChange={(event) => setCompareToId(event.target.value)}>
+              {versionHistory.map((version) => <option key={version.id} value={version.id}>v{version.versionNo} · {version.title}</option>)}
+            </select>
+          </label>
+          {(() => {
+            const from = versionHistory.find((version) => version.id === compareFromId);
+            const to = versionHistory.find((version) => version.id === compareToId);
+            if (!from || !to) return <p className="admin-empty">Выбери обе редакции.</p>;
+            if (from.id === to.id) return <p className="admin-empty">Выбрана одна и та же версия.</p>;
+            const older = from.versionNo < to.versionNo ? from : to;
+            const newer = from.versionNo < to.versionNo ? to : from;
+            const changes = compareQuestVersions(older, newer);
+            return <div className="admin-version-diff" aria-live="polite">
+              <strong>Изменения: v{older.versionNo} → v{newer.versionNo}</strong>
+              <ul>{changes.map((change, index) => <li key={index}>{change}</li>)}</ul>
+            </div>;
+          })()}
+        </div>}
+      </div>}
       {!editorLoading && editor && <QuestEditor
         key={editor.mode + '-' + (editor.quest?.id ?? 'new')}
         categories={categories}

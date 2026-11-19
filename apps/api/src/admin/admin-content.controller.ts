@@ -126,6 +126,15 @@ export class AdminContentController {
     return this.admin.getQuest(request.authUser as AuthenticatedUser, id);
   }
 
+  @Get('quests/:id/versions')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  getQuestVersions(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<object> {
+    return this.admin.getQuestVersions(request.authUser as AuthenticatedUser, id);
+  }
+
   @Patch('quests/:id')
   @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
   updateQuest(
