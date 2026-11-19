@@ -418,6 +418,16 @@ export function AdminClient() {
     }
   }
 
+  function toggleReviewQuestSelection(questId: string, checked: boolean) {
+    setSelectedReviewQuestIds((current) => {
+      if (checked) {
+        if (current.includes(questId) || current.length >= 25) return current;
+        return [...current, questId];
+      }
+      return current.filter((id) => id !== questId);
+    });
+  }
+
   async function assignQuestReviewer(quest: Quest, reviewerId: string | null) {
     await action(() => api(`/admin/quests/${quest.id}/reviewer`, {
       method: 'PATCH',
@@ -875,13 +885,13 @@ export function AdminClient() {
         </label>}
         <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые долго ожидающие.</p>
       </div>
-      {canReview && visibleReviewQuestIds.length > 0 && <div className="admin-form admin-audit-filters" aria-label="Массовое назначение рецензента">
+      {canReview && (visibleReviewQuestIds.length > 0 || selectedReviewQuestIds.length > 0) && <div className="admin-form admin-audit-filters" aria-label="Массовое назначение рецензента">
         <label className="field">
           <span>Выбор квестов на рецензии</span>
           <span className="admin-inline-control">
             <input type="checkbox" checked={allVisibleReviewQuestsSelected}
               onChange={(event) => setSelectedReviewQuestIds((current) => event.target.checked
-                ? [...new Set([...current, ...visibleReviewQuestIds])]
+                ? [...current, ...visibleReviewQuestIds.filter((id) => !current.includes(id)).slice(0, Math.max(0, 25 - current.length))]
                 : current.filter((id) => !visibleReviewQuestIds.includes(id))}
               disabled={busy}/>
             Выбрать все видимые ({visibleReviewQuestIds.length})
@@ -895,7 +905,7 @@ export function AdminClient() {
           </select>
         </label>
         <div className="admin-row-actions">
-          <span className="muted-copy">Выбрано: {selectedReviewQuestIds.length}</span>
+          <span className="muted-copy">Выбрано: {selectedReviewQuestIds.length} / 25</span>
           <button className="button button-small button-primary" type="button"
             disabled={busy || !selectedReviewQuestIds.length || !bulkReviewerId}
             onClick={() => void bulkAssignQuestReviewer(bulkReviewerId)}>
@@ -907,15 +917,15 @@ export function AdminClient() {
             Снять назначения
           </button>
         </div>
+        <small className="muted-copy admin-field-wide">За одну операцию можно выбрать не более 25 квестов.</small>
       </div>}
       <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
         <div>
           {canReview && status === 'REVIEW' && <label className="admin-inline-control">
-            <input type="checkbox" checked={selectedReviewQuestIds.includes(quest.id)} disabled={busy}
+            <input type="checkbox" checked={selectedReviewQuestIds.includes(quest.id)}
+              disabled={busy || (!selectedReviewQuestIds.includes(quest.id) && selectedReviewQuestIds.length >= 25)}
               aria-label={`Выбрать ${quest.slug} для массового назначения`}
-              onChange={(event) => setSelectedReviewQuestIds((current) => event.target.checked
-                ? [...new Set([...current, quest.id])]
-                : current.filter((id) => id !== quest.id))}/>
+              onChange={(event) => toggleReviewQuestSelection(quest.id, event.target.checked)}/>
             Выбрать
           </label>}
           <strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
