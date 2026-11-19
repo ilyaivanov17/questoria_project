@@ -276,7 +276,7 @@ test('quest version history is scoped for authors and strips private solutions f
     },
   } as unknown as PrismaService;
   const service = new AdminService(prisma);
-  const history = await service.getQuestVersions(author) as {
+  const history = await service.getQuestVersions(author, 'quest-1') as {
     versions: Array<{ id: string; levels: Array<{ puzzles: Array<Record<string, unknown>> }> }>;
   };
   assert.deepEqual(
@@ -305,7 +305,7 @@ test('reviewer version history includes all versions and their private answer ke
     },
   } as unknown as PrismaService;
   const service = new AdminService(prisma);
-  const history = await service.getQuestVersions(reviewer) as {
+  const history = await service.getQuestVersions(reviewer, 'quest-1') as {
     versions: Array<{ levels: Array<{ puzzles: Array<{ solutionPrivate: { answer: string } }> }> }>;
   };
   assert.deepEqual((query?.include as { versions: { where: unknown } }).versions.where, {});
