@@ -990,7 +990,7 @@ export function AdminClient() {
       </div>}
       {bulkSubmitReport && <section className="admin-review-feedback" aria-live="polite">
         <strong>{bulkSubmitReport.success ? 'Пакет отправлен на рецензию' : 'Нужны исправления перед отправкой'}</strong>
-        <small>Готово: {bulkSubmitReport.submittedCount} · Не прошло проверку: {bulkSubmitReport.blockedCount}</small>
+        <small>{bulkSubmitReport.success ? 'Отправлено: ' + bulkSubmitReport.submittedCount : 'Готовы: ' + bulkSubmitReport.items.filter((item) => item.ready).length + ' · Не готовы: ' + bulkSubmitReport.blockedCount + ' · Изменения не внесены'}</small>
         {bulkSubmitReport.items.filter((item) => !item.ready).map((item) => <div key={item.questId}>
           <strong>{item.title || item.questId}{item.versionNo ? ' · v' + item.versionNo : ''}</strong>
           <ul>{item.errors.map((message, index) => <li key={index}>{message}</li>)}</ul>
