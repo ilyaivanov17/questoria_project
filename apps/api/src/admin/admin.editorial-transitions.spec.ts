@@ -99,6 +99,7 @@ function makePublishableApprovedVersion() {
 test('approval is a compare-and-set transition from REVIEW and writes one audit entry', async () => {
   let transitionQuery: Record<string, unknown> | undefined;
   let auditCount = 0;
+  let notificationInput: Record<string, unknown> | undefined;
   const version = {
     id: 'version-1',
     questId: 'quest-1',
@@ -119,6 +120,9 @@ test('approval is a compare-and-set transition from REVIEW and writes one audit 
     adminAuditLog: {
       create: async () => { auditCount += 1; return {}; },
     },
+    questEditorialNotification: {
+      create: async (query: Record<string, unknown>) => { notificationInput = query; return {}; },
+    },
   };
   const service = makeTransactionService(tx);
 
@@ -127,6 +131,13 @@ test('approval is a compare-and-set transition from REVIEW and writes one audit 
   assert.deepEqual(transitionQuery?.where, { id: 'version-1', status: 'REVIEW' });
   assert.equal(result && (result as { status: string }).status, 'APPROVED');
   assert.equal(auditCount, 1);
+  assert.deepEqual(notificationInput?.data, {
+    recipientId: 'author-1',
+    questId: 'quest-1',
+    questVersionId: 'version-1',
+    type: 'APPROVED',
+    message: 'Версия v3 одобрена и ожидает публикации.',
+  });
 });
 
 test('a stale approval is rejected and produces no audit event', async () => {
@@ -161,6 +172,7 @@ test('a reviewer can return a reviewed quest to its author with a required, audi
   let transitionQuery: Record<string, unknown> | undefined;
   let auditInput: Record<string, unknown> | undefined;
   let auditCount = 0;
+  let notificationInput: Record<string, unknown> | undefined;
   const version = {
     id: 'version-1',
     questId: 'quest-1',
@@ -190,6 +202,9 @@ test('a reviewer can return a reviewed quest to its author with a required, audi
         return {};
       },
     },
+    questEditorialNotification: {
+      create: async (query: Record<string, unknown>) => { notificationInput = query; return {}; },
+    },
   };
   const service = makeTransactionService(tx);
 
@@ -216,6 +231,13 @@ test('a reviewer can return a reviewed quest to its author with a required, audi
   assert.equal(auditCount, 1);
   assert.equal((auditInput?.data as { action: string }).action, 'quest.returned_for_revision');
   assert.equal((auditInput?.data as { reason: string }).reason, 'Please clarify the second learning objective.');
+  assert.deepEqual(notificationInput?.data, {
+    recipientId: author.userId,
+    questId: 'quest-1',
+    questVersionId: 'version-1',
+    type: 'CHANGES_REQUESTED',
+    message: 'Please clarify the second learning objective.',
+  });
 });
 
 test('an author cannot return their own version for revision', async () => {
@@ -312,6 +334,7 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
   let transitionQuery: Record<string, unknown> | undefined;
   let questUpdate: Record<string, unknown> | undefined;
   let auditCount = 0;
+  let notificationInput: Record<string, unknown> | undefined;
   const version = makePublishableApprovedVersion();
   const published = { ...version, status: 'PUBLISHED', publishedById: publisher.userId };
   const tx = {
@@ -337,6 +360,9 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
     adminAuditLog: {
       create: async () => { auditCount += 1; return {}; },
     },
+    questEditorialNotification: {
+      create: async (query: Record<string, unknown>) => { notificationInput = query; return {}; },
+    },
   };
   const service = makeTransactionService(tx);
 
@@ -347,6 +373,13 @@ test('publication is a compare-and-set transition from APPROVED and is atomic wi
   assert.deepEqual(questUpdate?.data, { status: 'PUBLISHED' });
   assert.equal((result as { status: string }).status, 'PUBLISHED');
   assert.equal(auditCount, 1);
+  assert.deepEqual(notificationInput?.data, {
+    recipientId: 'author-1',
+    questId: 'quest-1',
+    questVersionId: 'version-1',
+    type: 'PUBLISHED',
+    message: 'Версия v3 опубликована и доступна в каталоге.',
+  });
 });
 
 
@@ -589,4 +622,94 @@ test('a stale reviewer assignment is rejected without an audit event', async () 
     ConflictException,
   );
   assert.equal(auditCount, 0);
+});
+
+
+test('editorial notifications are listed only for the authenticated recipient', async () => {
+  const queryFindMany: Record<string, unknown> = {};
+  const queryCount: Record<string, unknown> = {};
+  const items = [{ id: 'notification-1', type: 'APPROVED' }];
+  const prisma = {
+    questEditorialNotification: {
+      findMany: async (query: Record<string, unknown>) => {
+        Object.assign(queryFindMany, query);
+        return items;
+      },
+      count: async (query: Record<string, unknown>) => {
+        Object.assign(queryCount, query);
+        return 2;
+      },
+    },
+    $transaction: async <T>(operations: Promise<unknown>[]) => Promise.all(operations) as unknown as Promise<T>,
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const result = await service.listEditorialNotifications(author);
+
+  assert.deepEqual(queryFindMany.where, { recipientId: author.userId });
+  assert.deepEqual(queryCount.where, { recipientId: author.userId, readAt: null });
+  assert.deepEqual(result, { items, unreadCount: 2 });
+});
+
+test('marking a notification read is scoped to its recipient', async () => {
+  let updateQuery: Record<string, unknown> | undefined;
+  const prisma = {
+    questEditorialNotification: {
+      updateMany: async (query: Record<string, unknown>) => {
+        updateQuery = query;
+        return { count: 1 };
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const result = await service.markEditorialNotificationRead(author, 'notification-1');
+
+  assert.deepEqual(updateQuery?.where, {
+    id: 'notification-1',
+    recipientId: author.userId,
+    readAt: null,
+  });
+  assert.deepEqual(result, { id: 'notification-1', read: true, changed: true });
+});
+
+test('marking another user notification as read returns not found', async () => {
+  let lookupQuery: Record<string, unknown> | undefined;
+  const prisma = {
+    questEditorialNotification: {
+      updateMany: async () => ({ count: 0 }),
+      findFirst: async (query: Record<string, unknown>) => {
+        lookupQuery = query;
+        return null;
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  await assert.rejects(
+    () => service.markEditorialNotificationRead(author, 'notification-owned-by-someone-else'),
+    /Notification not found/,
+  );
+  assert.deepEqual(lookupQuery?.where, {
+    id: 'notification-owned-by-someone-else',
+    recipientId: author.userId,
+  });
+});
+
+test('mark all notifications as read affects only the authenticated recipient', async () => {
+  let updateQuery: Record<string, unknown> | undefined;
+  const prisma = {
+    questEditorialNotification: {
+      updateMany: async (query: Record<string, unknown>) => {
+        updateQuery = query;
+        return { count: 3 };
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+
+  const result = await service.markAllEditorialNotificationsRead(author);
+
+  assert.deepEqual(updateQuery?.where, { recipientId: author.userId, readAt: null });
+  assert.deepEqual(result, { updatedCount: 3 });
 });

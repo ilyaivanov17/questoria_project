@@ -8,6 +8,16 @@ type Identity = { userId: string; email: string; roleKeys: string[]; mfaEnabled:
 type Category = { id: string; slug: string; locale: string; title: string; description: string; status: string; sortOrder: number };
 type QuestAuthor = { email: string; nickname: string | null };
 type QuestReviewer = { id: string; email: string; nickname: string | null };
+type EditorialNotification = {
+  id: string;
+  type: 'CHANGES_REQUESTED' | 'APPROVED' | 'PUBLISHED';
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+  quest: { id: string; slug: string };
+  questVersion: { id: string; versionNo: number; title: string };
+};
+type EditorialNotificationPage = { items: EditorialNotification[]; unreadCount: number };
 type Quest = {
   id: string; slug: string; status: string; canEditDraft: boolean;
   category: { title: string; slug: string };
@@ -140,6 +150,8 @@ export function AdminClient() {
   const [questAuthorFilter, setQuestAuthorFilter] = useState('');
   const [questReviewerFilter, setQuestReviewerFilter] = useState('');
   const [reviewers, setReviewers] = useState<QuestReviewer[]>([]);
+  const [editorialNotifications, setEditorialNotifications] = useState<EditorialNotification[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditSkip, setAuditSkip] = useState(0);
@@ -191,7 +203,7 @@ export function AdminClient() {
       const adminNeedsMfa = result.user.roleKeys.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r));
       if (!adminNeedsMfa || (result.user.mfaEnabled && result.user.sessionMfaVerified)) {
         const canReviewContent = result.user.roleKeys.some((role) => ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'].includes(role));
-        const [cats, qs, skillCatalog, members, reviewerOptions] = await Promise.all([
+        const [cats, qs, skillCatalog, members, reviewerOptions, notificationPage] = await Promise.all([
           api<Category[]>('/admin/categories'),
           api<Quest[]>('/admin/quests'),
           api<CmsSkillOption[]>('/admin/skills'),
@@ -199,12 +211,15 @@ export function AdminClient() {
             ? api<ManagedUser[]>('/admin/users')
             : Promise.resolve([] as ManagedUser[]),
           canReviewContent ? api<QuestReviewer[]>('/admin/reviewers') : Promise.resolve([] as QuestReviewer[]),
+          api<EditorialNotificationPage>('/admin/notifications'),
         ]);
         setCategories(cats);
         setQuests(qs);
         setSkillOptions(skillCatalog);
         setManagedUsers(members);
         setReviewers(reviewerOptions);
+        setEditorialNotifications(notificationPage.items);
+        setUnreadNotificationCount(notificationPage.unreadCount);
         if (result.user.mfaEnabled && result.user.sessionMfaVerified) {
           const recoveryStatus = await api<{ remaining: number }>('/admin/mfa/recovery-codes/status');
           setRecoveryCodeCount(recoveryStatus.remaining);
@@ -372,6 +387,18 @@ export function AdminClient() {
       setEditor(null);
       setVersionHistory([]);
     }
+  }
+
+  async function markEditorialNotificationRead(notificationId: string) {
+    await action(() => api(`/admin/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    }), 'Уведомление отмечено прочитанным.');
+  }
+
+  async function markAllEditorialNotificationsRead() {
+    await action(() => api('/admin/notifications/read-all', {
+      method: 'POST',
+    }), 'Все уведомления отмечены прочитанными.');
   }
 
   async function assignQuestReviewer(quest: Quest, reviewerId: string | null) {
@@ -625,10 +652,54 @@ export function AdminClient() {
       {identity.mfaEnabled && identity.sessionMfaVerified && <a href="#admin-security">Безопасность</a>}
       {isSuperAdmin && <a href="#admin-users">Пользователи и роли</a>}
       <a href="#admin-categories">Рубрики</a>
+      <a href="#admin-notifications">Уведомления{unreadNotificationCount > 0 ? ` (${unreadNotificationCount})` : ''}</a>
       <a href="#admin-quests">Квесты и версии</a>
       {canAuthor && <a href="#admin-editor">Новый квест</a>}
       {canReview && <a href="#admin-audit">Журнал аудита</a>}
     </nav>
+
+    <section id="admin-notifications" className="admin-panel">
+      <div className="admin-section-title">
+        <div>
+          <p className="eyebrow">EDITORIAL UPDATES</p>
+          <h2>Уведомления</h2>
+          <p className="admin-section-description">
+            Статусы твоих квестов, решения рецензентов и замечания к версиям.
+          </p>
+        </div>
+        <div className="admin-row-actions">
+          <span className="admin-count">{unreadNotificationCount}</span>
+          {unreadNotificationCount > 0 && <button className="button button-small button-secondary" type="button"
+            disabled={busy} onClick={() => void markAllEditorialNotificationsRead()}>
+            Прочитать все
+          </button>}
+        </div>
+      </div>
+      <div className="admin-list">
+        {editorialNotifications.map((notification) => {
+          const title = notification.type === 'CHANGES_REQUESTED'
+            ? 'Нужны доработки'
+            : notification.type === 'APPROVED'
+              ? 'Версия одобрена'
+              : 'Квест опубликован';
+          return <article className="admin-list-row" key={notification.id}>
+            <div>
+              <strong>{title} · {notification.questVersion.title}</strong>
+              <span>{notification.quest.slug} · v{notification.questVersion.versionNo} · {new Date(notification.createdAt).toLocaleString('ru-RU')}</span>
+              <p className="muted-copy">{notification.message}</p>
+              {!notification.readAt && <small className="admin-trust-good">Новое уведомление</small>}
+            </div>
+            <div className="admin-row-actions">
+              {!notification.readAt && <button className="button button-small button-secondary" type="button"
+                disabled={busy} onClick={() => void markEditorialNotificationRead(notification.id)}>
+                Прочитано
+              </button>}
+            </div>
+          </article>;
+        })}
+        {!editorialNotifications.length && <p className="admin-empty">Пока нет уведомлений о редактуре квестов.</p>}
+      </div>
+    </section>
 
     {identity.mfaEnabled && identity.sessionMfaVerified && <section id="admin-security" className="admin-panel admin-mfa-recovery-panel">
       <div className="admin-section-title">

@@ -105,6 +105,27 @@ export class AdminContentController {
     return this.admin.updateSkill(request.authUser as AuthenticatedUser, id, dto);
   }
 
+  @Get('notifications')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  listEditorialNotifications(@Req() request: Request): Promise<object> {
+    return this.admin.listEditorialNotifications(request.authUser as AuthenticatedUser);
+  }
+
+  @Post('notifications/read-all')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  markAllEditorialNotificationsRead(@Req() request: Request): Promise<object> {
+    return this.admin.markAllEditorialNotificationsRead(request.authUser as AuthenticatedUser);
+  }
+
+  @Patch('notifications/:id/read')
+  @Roles('AUTHOR', 'REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  markEditorialNotificationRead(
+    @Req() request: Request,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<object> {
+    return this.admin.markEditorialNotificationRead(request.authUser as AuthenticatedUser, id);
+  }
+
   @Get('reviewers')
   @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
   listQuestReviewers(): Promise<object[]> {
