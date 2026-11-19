@@ -250,3 +250,64 @@ test('reviewer queue exposes author identity while author responses never includ
   const result = await service.listQuests(reviewer) as Array<{ latestVersion: { author: { email: string; nickname: string } } }>;
   assert.deepEqual(result[0]?.latestVersion.author, { email: 'author@example.test', nickname: 'Автор' });
 });
+
+
+test('quest version history is scoped for authors and strips private solutions from published versions', async () => {
+  let query: Record<string, unknown> | undefined;
+  const prisma = {
+    quest: {
+      findFirst: async (input: Record<string, unknown>) => {
+        query = input;
+        return {
+          id: 'quest-1',
+          slug: 'quest-one',
+          versions: [
+            {
+              id: 'own-draft', versionNo: 3, authorId: author.userId, status: 'DRAFT',
+              levels: [{ id: 'level-own', puzzles: [{ id: 'puzzle-own', solutionPrivate: { answer: 'own' }, hints: [] }] }],
+            },
+            {
+              id: 'published', versionNo: 2, authorId: 'other-author', status: 'PUBLISHED',
+              levels: [{ id: 'level-published', puzzles: [{ id: 'puzzle-published', solutionPrivate: { answer: 'secret' }, hints: [] }] }],
+            },
+          ],
+        };
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+  const history = await service.getQuestVersions(author) as {
+    versions: Array<{ id: string; levels: Array<{ puzzles: Array<Record<string, unknown>> }> }>;
+  };
+  assert.deepEqual(
+    (query?.include as { versions: { where: unknown } }).versions.where,
+    { OR: [{ authorId: author.userId }, { status: 'PUBLISHED' }] },
+  );
+  assert.deepEqual(history.versions.map((version) => version.id), ['own-draft', 'published']);
+  assert.equal('solutionPrivate' in history.versions[0]!.levels[0]!.puzzles[0]!, true);
+  assert.equal('solutionPrivate' in history.versions[1]!.levels[0]!.puzzles[0]!, false);
+});
+
+test('reviewer version history includes all versions and their private answer keys', async () => {
+  let query: Record<string, unknown> | undefined;
+  const prisma = {
+    quest: {
+      findFirst: async (input: Record<string, unknown>) => {
+        query = input;
+        return {
+          id: 'quest-1',
+          versions: [{
+            id: 'review-version', authorId: author.userId, status: 'REVIEW',
+            levels: [{ id: 'level-1', puzzles: [{ id: 'puzzle-1', solutionPrivate: { answer: 'visible-to-reviewer' }, hints: [] }] }],
+          }],
+        };
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new AdminService(prisma);
+  const history = await service.getQuestVersions(reviewer) as {
+    versions: Array<{ levels: Array<{ puzzles: Array<{ solutionPrivate: { answer: string } }> }> }>;
+  };
+  assert.deepEqual((query?.include as { versions: { where: unknown } }).versions.where, {});
+  assert.equal(history.versions[0]!.levels[0]!.puzzles[0]!.solutionPrivate.answer, 'visible-to-reviewer');
+});
