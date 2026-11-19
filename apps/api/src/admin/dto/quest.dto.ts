@@ -275,6 +275,15 @@ export class AssignQuestReviewerDto {
 }
 
 
+export class BulkSubmitQuestReviewDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(25)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  questIds!: string[];
+}
+
 export class BulkAssignQuestReviewerDto {
   @IsArray()
   @ArrayMinSize(1)

@@ -28,6 +28,19 @@ type Quest = {
     author?: QuestAuthor | null;
   } | null;
 };
+type BulkSubmitReviewResult = {
+  success: boolean;
+  submittedCount: number;
+  blockedCount: number;
+  items: Array<{
+    questId: string;
+    versionId: string | null;
+    versionNo: number | null;
+    title: string | null;
+    ready: boolean;
+    errors: string[];
+  }>;
+};
 type Audit = {
   id: string; action: string; entityType: string; entityId: string;
   reason: string | null; beforeJson: unknown; afterJson: unknown;
@@ -150,6 +163,8 @@ export function AdminClient() {
   const [questAuthorFilter, setQuestAuthorFilter] = useState('');
   const [questReviewerFilter, setQuestReviewerFilter] = useState('');
   const [selectedReviewQuestIds, setSelectedReviewQuestIds] = useState<string[]>([]);
+  const [selectedDraftQuestIds, setSelectedDraftQuestIds] = useState<string[]>([]);
+  const [bulkSubmitReport, setBulkSubmitReport] = useState<BulkSubmitReviewResult | null>(null);
   const [bulkReviewerId, setBulkReviewerId] = useState('');
   const [reviewers, setReviewers] = useState<QuestReviewer[]>([]);
   const [editorialNotifications, setEditorialNotifications] = useState<EditorialNotification[]>([]);
@@ -418,6 +433,33 @@ export function AdminClient() {
     }
   }
 
+  async function bulkSubmitDraftsForReview() {
+    if (!selectedDraftQuestIds.length) return;
+    const result = await action(() => api<BulkSubmitReviewResult>('/admin/quests/bulk-submit-review', {
+      method: 'POST',
+      body: JSON.stringify({ questIds: selectedDraftQuestIds }),
+    }), 'Пакетная проверка черновиков завершена.') as BulkSubmitReviewResult | undefined;
+    if (!result) return;
+
+    setBulkSubmitReport(result);
+    if (result.success) {
+      setSelectedDraftQuestIds([]);
+      setNotice(`На рецензию отправлено квестов: ${result.submittedCount}.`);
+    } else {
+      setNotice(`Отправка отменена: ${result.blockedCount} из ${result.items.length} квестов не прошли проверку. Изменения не внесены.`);
+    }
+  }
+
+  function toggleDraftQuestSelection(questId: string, checked: boolean) {
+    setSelectedDraftQuestIds((current) => {
+      if (checked) {
+        if (current.includes(questId) || current.length >= 25) return current;
+        return [...current, questId];
+      }
+      return current.filter((id) => id !== questId);
+    });
+  }
+
   function toggleReviewQuestSelection(questId: string, checked: boolean) {
     setSelectedReviewQuestIds((current) => {
       if (checked) {
@@ -640,6 +682,11 @@ export function AdminClient() {
     .map((quest) => quest.id);
   const allVisibleReviewQuestsSelected = visibleReviewQuestIds.length > 0
     && visibleReviewQuestIds.every((id) => selectedReviewQuestIds.includes(id));
+  const visibleDraftQuestIds = visibleQuests
+    .filter((quest) => (quest.latestVersion?.status ?? quest.status) === 'DRAFT' && quest.canEditDraft)
+    .map((quest) => quest.id);
+  const allVisibleDraftQuestsSelected = visibleDraftQuestIds.length > 0
+    && visibleDraftQuestIds.every((id) => selectedDraftQuestIds.includes(id));
   const visibleManagedUsers = managedUsers.filter((user) => {
     const term = userSearch.trim().toLocaleLowerCase('ru-RU');
     return !term || user.email.toLocaleLowerCase('ru-RU').includes(term)
@@ -919,8 +966,47 @@ export function AdminClient() {
         </div>
         <small className="muted-copy admin-field-wide">За одну операцию можно выбрать не более 25 квестов.</small>
       </div>}
+      {(visibleDraftQuestIds.length > 0 || selectedDraftQuestIds.length > 0) && <div className="admin-form admin-audit-filters" aria-label="Пакетная отправка черновиков на рецензию">
+        <label className="field">
+          <span>Выбор черновиков</span>
+          <span className="admin-inline-control">
+            <input type="checkbox" checked={allVisibleDraftQuestsSelected}
+              onChange={(event) => setSelectedDraftQuestIds((current) => event.target.checked
+                ? [...current, ...visibleDraftQuestIds.filter((id) => !current.includes(id)).slice(0, Math.max(0, 25 - current.length))]
+                : current.filter((id) => !visibleDraftQuestIds.includes(id)))}
+              disabled={busy}/>
+            Выбрать доступные видимые (до 25)
+          </span>
+        </label>
+        <div className="admin-row-actions">
+          <span className="muted-copy">Выбрано: {selectedDraftQuestIds.length} / 25</span>
+          <button className="button button-small button-primary" type="button"
+            disabled={busy || !selectedDraftQuestIds.length}
+            onClick={() => void bulkSubmitDraftsForReview()}>
+            Проверить и отправить на рецензию
+          </button>
+        </div>
+        <small className="muted-copy admin-field-wide">Сначала проверяется каждый черновик. Если хотя бы один не готов, пакет не отправляется целиком.</small>
+      </div>}
+      {bulkSubmitReport && <section className="admin-review-feedback" aria-live="polite">
+        <strong>{bulkSubmitReport.success ? 'Пакет отправлен на рецензию' : 'Нужны исправления перед отправкой'}</strong>
+        <small>{bulkSubmitReport.success ? 'Отправлено: ' + bulkSubmitReport.submittedCount : 'Готовы: ' + bulkSubmitReport.items.filter((item) => item.ready).length + ' · Не готовы: ' + bulkSubmitReport.blockedCount + ' · Изменения не внесены'}</small>
+        {bulkSubmitReport.items.filter((item) => !item.ready).map((item) => <div key={item.questId}>
+          <strong>{item.title || item.questId}{item.versionNo ? ' · v' + item.versionNo : ''}</strong>
+          <ul>{item.errors.map((message, index) => <li key={index}>{message}</li>)}</ul>
+        </div>)}
+        <button className="button button-small button-secondary" type="button"
+          onClick={() => setBulkSubmitReport(null)} disabled={busy}>Скрыть отчёт</button>
+      </section>}
       <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
         <div>
+          {status === 'DRAFT' && quest.canEditDraft && <label className="admin-inline-control">
+            <input type="checkbox" checked={selectedDraftQuestIds.includes(quest.id)}
+              disabled={busy || (!selectedDraftQuestIds.includes(quest.id) && selectedDraftQuestIds.length >= 25)}
+              aria-label={'Выбрать ' + quest.slug + ' для пакетной отправки на рецензию'}
+              onChange={(event) => toggleDraftQuestSelection(quest.id, event.target.checked)}/>
+            Выбрать для отправки
+          </label>}
           {canReview && status === 'REVIEW' && <label className="admin-inline-control">
             <input type="checkbox" checked={selectedReviewQuestIds.includes(quest.id)}
               disabled={busy || (!selectedReviewQuestIds.includes(quest.id) && selectedReviewQuestIds.length >= 25)}

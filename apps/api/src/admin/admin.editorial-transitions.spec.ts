@@ -459,6 +459,123 @@ test('draft submission re-checks ownership after locking and re-reading the curr
   assert.equal(auditCount, 0);
 });
 
+test('a batch submits every ready draft and audits each quest', async () => {
+  const readyDraft = (questId: string) => ({
+    ...makePublishableApprovedVersion(),
+    id: `version-${questId}`,
+    questId,
+    status: 'DRAFT',
+    authorId: author.userId,
+  });
+  const versions = new Map([
+    ['quest-1', readyDraft('quest-1')],
+    ['quest-2', readyDraft('quest-2')],
+  ]);
+  const transitions: Record<string, unknown>[] = [];
+  let auditCount = 0;
+  const tx = {
+    $queryRaw: async (_strings: TemplateStringsArray, ...values: unknown[]) => [{ id: values[0] }],
+    questVersion: {
+      findFirst: async (query: { where: { questId: string } }) => versions.get(query.where.questId),
+      updateMany: async (query: Record<string, unknown>) => {
+        transitions.push(query);
+        return { count: 1 };
+      },
+    },
+    skill: {
+      findMany: async () => [{ id: 'skill-1', key: 'number-patterns', name: 'Number Patterns' }],
+    },
+    skillPrerequisite: { findMany: async () => [] },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  const result = await service.bulkSubmitForReview(author, ['quest-2', 'quest-1']) as {
+    success: boolean; submittedCount: number; blockedCount: number;
+    items: Array<{ questId: string; ready: boolean; errors: string[] }>;
+  };
+
+  assert.equal(result.success, true);
+  assert.equal(result.submittedCount, 2);
+  assert.equal(result.blockedCount, 0);
+  assert.deepEqual(result.items.map((item) => item.questId), ['quest-2', 'quest-1']);
+  assert.ok(result.items.every((item) => item.ready && item.errors.length === 0));
+  assert.equal(transitions.length, 2);
+  assert.ok(transitions.every((query) => (
+    (query.where as { status: string }).status === 'DRAFT'
+      && (query.data as { status: string }).status === 'REVIEW'
+  )));
+  assert.equal(auditCount, 2);
+});
+
+test('a batch reports every readiness failure and changes no quest when one draft is invalid', async () => {
+  const readyDraft = (questId: string) => ({
+    ...makePublishableApprovedVersion(),
+    id: `version-${questId}`,
+    questId,
+    status: 'DRAFT',
+    authorId: author.userId,
+  });
+  const versions = new Map([
+    ['quest-1', readyDraft('quest-1')],
+    ['quest-2', { ...readyDraft('quest-2'), title: '' }],
+  ]);
+  let transitionCount = 0;
+  let auditCount = 0;
+  const tx = {
+    $queryRaw: async (_strings: TemplateStringsArray, ...values: unknown[]) => [{ id: values[0] }],
+    questVersion: {
+      findFirst: async (query: { where: { questId: string } }) => versions.get(query.where.questId),
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+    skill: {
+      findMany: async () => [{ id: 'skill-1', key: 'number-patterns', name: 'Number Patterns' }],
+    },
+    skillPrerequisite: { findMany: async () => [] },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  const result = await service.bulkSubmitForReview(author, ['quest-1', 'quest-2']) as {
+    success: boolean; submittedCount: number; blockedCount: number;
+    items: Array<{ questId: string; ready: boolean; errors: string[] }>;
+  };
+
+  assert.equal(result.success, false);
+  assert.equal(result.submittedCount, 0);
+  assert.equal(result.blockedCount, 1);
+  assert.equal(result.items[0]?.ready, true);
+  assert.equal(result.items[1]?.ready, false);
+  assert.ok(result.items[1]?.errors.includes('Title is required.'));
+  assert.equal(transitionCount, 0);
+  assert.equal(auditCount, 0);
+});
+
+test('a batch cannot submit another author’s draft', async () => {
+  const version = {
+    ...makePublishableApprovedVersion(),
+    id: 'version-quest-1',
+    questId: 'quest-1',
+    status: 'DRAFT',
+    authorId: 'different-author',
+  };
+  let transitionCount = 0;
+  const tx = {
+    $queryRaw: async () => [{ id: version.id }],
+    questVersion: {
+      findFirst: async () => version,
+      updateMany: async () => { transitionCount += 1; return { count: 1 }; },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.bulkSubmitForReview(author, ['quest-1']),
+    ForbiddenException,
+  );
+  assert.equal(transitionCount, 0);
+});
+
 test('a stale publication is rejected without changing quest status or writing audit', async () => {
   let questUpdates = 0;
   let auditCount = 0;
