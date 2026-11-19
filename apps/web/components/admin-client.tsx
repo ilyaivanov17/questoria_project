@@ -149,6 +149,8 @@ export function AdminClient() {
   const [questStatusFilter, setQuestStatusFilter] = useState('');
   const [questAuthorFilter, setQuestAuthorFilter] = useState('');
   const [questReviewerFilter, setQuestReviewerFilter] = useState('');
+  const [selectedReviewQuestIds, setSelectedReviewQuestIds] = useState<string[]>([]);
+  const [bulkReviewerId, setBulkReviewerId] = useState('');
   const [reviewers, setReviewers] = useState<QuestReviewer[]>([]);
   const [editorialNotifications, setEditorialNotifications] = useState<EditorialNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -401,6 +403,31 @@ export function AdminClient() {
     }), 'Все уведомления отмечены прочитанными.');
   }
 
+  async function bulkAssignQuestReviewer(reviewerId: string | null) {
+    if (!selectedReviewQuestIds.length) return;
+    const count = selectedReviewQuestIds.length;
+    const result = await action(() => api('/admin/quests/bulk-assign-reviewer', {
+      method: 'POST',
+      body: JSON.stringify({ questIds: selectedReviewQuestIds, reviewerId }),
+    }), reviewerId
+      ? `Рецензент назначен для выбранных квестов (${count}).`
+      : `Назначение рецензента снято для выбранных квестов (${count}).`);
+    if (result) {
+      setSelectedReviewQuestIds([]);
+      setBulkReviewerId('');
+    }
+  }
+
+  function toggleReviewQuestSelection(questId: string, checked: boolean) {
+    setSelectedReviewQuestIds((current) => {
+      if (checked) {
+        if (current.includes(questId) || current.length >= 25) return current;
+        return [...current, questId];
+      }
+      return current.filter((id) => id !== questId);
+    });
+  }
+
   async function assignQuestReviewer(quest: Quest, reviewerId: string | null) {
     await action(() => api(`/admin/quests/${quest.id}/reviewer`, {
       method: 'PATCH',
@@ -608,6 +635,11 @@ export function AdminClient() {
       const rightDate = new Date(right.latestVersion?.updatedAt ?? 0).getTime();
       return leftStatus === 'REVIEW' ? leftDate - rightDate : rightDate - leftDate;
     });
+  const visibleReviewQuestIds = visibleQuests
+    .filter((quest) => (quest.latestVersion?.status ?? quest.status) === 'REVIEW')
+    .map((quest) => quest.id);
+  const allVisibleReviewQuestsSelected = visibleReviewQuestIds.length > 0
+    && visibleReviewQuestIds.every((id) => selectedReviewQuestIds.includes(id));
   const visibleManagedUsers = managedUsers.filter((user) => {
     const term = userSearch.trim().toLocaleLowerCase('ru-RU');
     return !term || user.email.toLocaleLowerCase('ru-RU').includes(term)
@@ -853,8 +885,50 @@ export function AdminClient() {
         </label>}
         <p className="admin-section-description">Сначала показываются версии на рецензии; внутри очереди — самые долго ожидающие.</p>
       </div>
+      {canReview && (visibleReviewQuestIds.length > 0 || selectedReviewQuestIds.length > 0) && <div className="admin-form admin-audit-filters" aria-label="Массовое назначение рецензента">
+        <label className="field">
+          <span>Выбор квестов на рецензии</span>
+          <span className="admin-inline-control">
+            <input type="checkbox" checked={allVisibleReviewQuestsSelected}
+              onChange={(event) => setSelectedReviewQuestIds((current) => event.target.checked
+                ? [...current, ...visibleReviewQuestIds.filter((id) => !current.includes(id)).slice(0, Math.max(0, 25 - current.length))]
+                : current.filter((id) => !visibleReviewQuestIds.includes(id)))}
+              disabled={busy}/>
+            Выбрать видимые (до 25 всего)
+          </span>
+        </label>
+        <label className="field">
+          <span>Рецензент для выбранных</span>
+          <select value={bulkReviewerId} onChange={(event) => setBulkReviewerId(event.target.value)} disabled={busy}>
+            <option value="">Выбери рецензента</option>
+            {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.nickname || reviewer.email}</option>)}
+          </select>
+        </label>
+        <div className="admin-row-actions">
+          <span className="muted-copy">Выбрано: {selectedReviewQuestIds.length} / 25</span>
+          <button className="button button-small button-primary" type="button"
+            disabled={busy || !selectedReviewQuestIds.length || !bulkReviewerId}
+            onClick={() => void bulkAssignQuestReviewer(bulkReviewerId)}>
+            Назначить выбранным
+          </button>
+          <button className="button button-small button-secondary" type="button"
+            disabled={busy || !selectedReviewQuestIds.length}
+            onClick={() => void bulkAssignQuestReviewer(null)}>
+            Снять назначения
+          </button>
+        </div>
+        <small className="muted-copy admin-field-wide">За одну операцию можно выбрать не более 25 квестов.</small>
+      </div>}
       <div className="admin-list">{visibleQuests.map((quest) => { const status = quest.latestVersion?.status ?? quest.status; return <article className="admin-list-row admin-quest-row" key={quest.id}>
-        <div><strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
+        <div>
+          {canReview && status === 'REVIEW' && <label className="admin-inline-control">
+            <input type="checkbox" checked={selectedReviewQuestIds.includes(quest.id)}
+              disabled={busy || (!selectedReviewQuestIds.includes(quest.id) && selectedReviewQuestIds.length >= 25)}
+              aria-label={`Выбрать ${quest.slug} для массового назначения`}
+              onChange={(event) => toggleReviewQuestSelection(quest.id, event.target.checked)}/>
+            Выбрать
+          </label>}
+          <strong>{quest.latestVersion?.title ?? quest.slug}</strong><span>{quest.slug} · {quest.category.title} · v{quest.latestVersion?.versionNo ?? '—'}</span>
           {canReview && quest.latestVersion?.author && <small className="muted-copy">Автор: {quest.latestVersion.author.nickname || quest.latestVersion.author.email} · обновлено {new Date(quest.latestVersion.updatedAt).toLocaleString('ru-RU')}</small>}
           {canReview && status === 'REVIEW' && <small className="muted-copy">Рецензент: {quest.latestVersion?.reviewer?.nickname || quest.latestVersion?.reviewer?.email || 'не назначен'}</small>}
         </div>

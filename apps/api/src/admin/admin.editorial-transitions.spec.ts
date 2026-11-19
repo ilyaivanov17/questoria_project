@@ -713,3 +713,182 @@ test('mark all notifications as read affects only the authenticated recipient', 
   assert.deepEqual(updateQuery?.where, { recipientId: author.userId, readAt: null });
   assert.deepEqual(result, { updatedCount: 3 });
 });
+
+
+test('bulk reviewer assignment updates each selected REVIEW version and audits every changed quest', async () => {
+  const versions = [
+    {
+      id: 'version-1', questId: 'quest-1', versionNo: 2,
+      status: 'REVIEW', authorId: author.userId, reviewerId: null,
+    },
+    {
+      id: 'version-2', questId: 'quest-2', versionNo: 5,
+      status: 'REVIEW', authorId: 'author-2', reviewerId: 'reviewer-old',
+    },
+    {
+      id: 'version-3', questId: 'quest-3', versionNo: 1,
+      status: 'REVIEW', authorId: 'author-3', reviewerId: 'reviewer-2',
+    },
+  ];
+  const targetReviewer = {
+    id: 'reviewer-2',
+    emailNormalized: 'reviewer2@example.test',
+    profile: { nickname: 'Reviewer Two' },
+  };
+  const updateQueries: Record<string, unknown>[] = [];
+  const auditEntries: Record<string, unknown>[] = [];
+  const tx = {
+    questVersion: {
+      findMany: async () => versions,
+      updateMany: async (query: Record<string, unknown>) => {
+        updateQueries.push(query);
+        return { count: 1 };
+      },
+    },
+    user: { findFirst: async () => targetReviewer },
+    adminAuditLog: {
+      create: async (query: Record<string, unknown>) => {
+        auditEntries.push(query);
+        return {};
+      },
+    },
+  };
+  const service = makeTransactionService(tx);
+
+  const result = await service.bulkAssignQuestReviewer(
+    reviewer,
+    ['quest-1', 'quest-2', 'quest-3'],
+    targetReviewer.id,
+  );
+
+  assert.equal(updateQueries.length, 2);
+  assert.deepEqual(updateQueries[0]?.where, { id: 'version-1', status: 'REVIEW', reviewerId: null });
+  assert.deepEqual(updateQueries[1]?.where, { id: 'version-2', status: 'REVIEW', reviewerId: 'reviewer-old' });
+  assert.equal(auditEntries.length, 2);
+  assert.equal((auditEntries[0]?.data as { action: string }).action, 'quest.reviewer.bulk_assigned');
+  assert.equal((auditEntries[1]?.data as { entityId: string }).entityId, 'quest-2');
+  assert.deepEqual(result, {
+    changedCount: 2,
+    unchangedCount: 1,
+    reviewer: {
+      id: targetReviewer.id,
+      email: targetReviewer.emailNormalized,
+      nickname: 'Reviewer Two',
+    },
+    items: [
+      { questId: 'quest-1', versionId: 'version-1', versionNo: 2, reviewerId: targetReviewer.id, changed: true },
+      { questId: 'quest-2', versionId: 'version-2', versionNo: 5, reviewerId: targetReviewer.id, changed: true },
+      { questId: 'quest-3', versionId: 'version-3', versionNo: 1, reviewerId: targetReviewer.id, changed: false },
+    ],
+  });
+});
+
+test('bulk reviewer assignment rejects authors before starting a transaction', async () => {
+  let transactionStarted = false;
+  const service = makeTransactionService({
+    $transaction: async () => { transactionStarted = true; },
+  });
+
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(author, ['quest-1'], 'reviewer-2'),
+    ForbiddenException,
+  );
+  assert.equal(transactionStarted, false);
+});
+
+test('bulk reviewer assignment rejects empty, oversized and duplicate selections', async () => {
+  let transactionStarted = false;
+  const service = makeTransactionService({
+    $transaction: async () => { transactionStarted = true; },
+  });
+
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, [], 'reviewer-2'),
+    BadRequestException,
+  );
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, Array.from({ length: 26 }, (_, i) => `quest-${i}`), 'reviewer-2'),
+    BadRequestException,
+  );
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, ['quest-1', 'quest-1'], 'reviewer-2'),
+    BadRequestException,
+  );
+  assert.equal(transactionStarted, false);
+});
+
+test('bulk reviewer assignment rejects a target reviewer who authored any selected quest', async () => {
+  let updateCount = 0;
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findMany: async () => [{
+        id: 'version-1', questId: 'quest-1', versionNo: 2,
+        status: 'REVIEW', authorId: 'reviewer-2', reviewerId: null,
+      }],
+      updateMany: async () => { updateCount += 1; return { count: 1 }; },
+    },
+    user: { findFirst: async () => ({
+      id: 'reviewer-2', emailNormalized: 'reviewer2@example.test', profile: null,
+    }) },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, ['quest-1'], 'reviewer-2'),
+    ConflictException,
+  );
+  assert.equal(updateCount, 0);
+  assert.equal(auditCount, 0);
+});
+
+test('bulk reviewer assignment rejects the whole selection if a quest is no longer in REVIEW', async () => {
+  let updateCount = 0;
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findMany: async () => [{
+        id: 'version-1', questId: 'quest-1', versionNo: 2,
+        status: 'REVIEW', authorId: author.userId, reviewerId: null,
+      }],
+      updateMany: async () => { updateCount += 1; return { count: 1 }; },
+    },
+    user: { findFirst: async () => ({
+      id: 'reviewer-2', emailNormalized: 'reviewer2@example.test', profile: null,
+    }) },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, ['quest-1', 'quest-2'], 'reviewer-2'),
+    ConflictException,
+  );
+  assert.equal(updateCount, 0);
+  assert.equal(auditCount, 0);
+});
+
+test('bulk reviewer assignment uses compare-and-set and writes no audit on a concurrent change', async () => {
+  let auditCount = 0;
+  const tx = {
+    questVersion: {
+      findMany: async () => [{
+        id: 'version-1', questId: 'quest-1', versionNo: 2,
+        status: 'REVIEW', authorId: author.userId, reviewerId: null,
+      }],
+      updateMany: async () => ({ count: 0 }),
+    },
+    user: { findFirst: async () => ({
+      id: 'reviewer-2', emailNormalized: 'reviewer2@example.test', profile: null,
+    }) },
+    adminAuditLog: { create: async () => { auditCount += 1; return {}; } },
+  };
+  const service = makeTransactionService(tx);
+
+  await assert.rejects(
+    () => service.bulkAssignQuestReviewer(reviewer, ['quest-1'], 'reviewer-2'),
+    ConflictException,
+  );
+  assert.equal(auditCount, 0);
+});

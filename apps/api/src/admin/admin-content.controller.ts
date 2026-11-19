@@ -17,7 +17,7 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AdminService } from './admin.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateSkillDto, UpdateSkillDto } from './dto/skill.dto.js';
-import { AssignQuestReviewerDto, CreateQuestDto, RequestQuestChangesDto, UpdateQuestDto } from './dto/quest.dto.js';
+import { AssignQuestReviewerDto, BulkAssignQuestReviewerDto, CreateQuestDto, RequestQuestChangesDto, UpdateQuestDto } from './dto/quest.dto.js';
 import { AssignUserRoleDto, RemoveUserRoleDto, RevokeUserSessionDto, UpdateManagedUserStatusDto } from './dto/user-management.dto.js';
 import { AdminCsrfGuard } from './admin-csrf.guard.js';
 import { AdminMfaGuard } from './admin-mfa.guard.js';
@@ -198,6 +198,19 @@ export class AdminContentController {
     @Body() dto: AssignQuestReviewerDto,
   ): Promise<object> {
     return this.admin.assignQuestReviewer(request.authUser as AuthenticatedUser, id, dto.reviewerId);
+  }
+
+  @Post('quests/bulk-assign-reviewer')
+  @Roles('REVIEWER', 'ADMIN', 'SUPER_ADMIN')
+  bulkAssignQuestReviewer(
+    @Req() request: Request,
+    @Body() dto: BulkAssignQuestReviewerDto,
+  ): Promise<object> {
+    return this.admin.bulkAssignQuestReviewer(
+      request.authUser as AuthenticatedUser,
+      dto.questIds,
+      dto.reviewerId,
+    );
   }
 
   @Post('quests/:id/request-changes')
