@@ -567,9 +567,9 @@ export function AdminClient() {
       return matchesSearch
         && (!questStatusFilter || status === questStatusFilter)
         && (!questAuthorFilter || quest.latestVersion?.author?.email === questAuthorFilter)
-        && (!questReviewerFilter || (questReviewerFilter === 'unassigned'
+        && (!questReviewerFilter || (status === 'REVIEW' && (questReviewerFilter === 'unassigned'
           ? !quest.latestVersion?.reviewerId
-          : quest.latestVersion?.reviewerId === questReviewerFilter));
+          : quest.latestVersion?.reviewerId === questReviewerFilter)));
     })
     .sort((left, right) => {
       const rank: Record<string, number> = { REVIEW: 0, DRAFT: 1, APPROVED: 2, PUBLISHED: 3, ARCHIVED: 4 };
