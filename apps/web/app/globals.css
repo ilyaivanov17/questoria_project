@@ -3480,3 +3480,53 @@ summary:focus-visible {
 .admin-review-feedback small { color: var(--muted); font-size: 11px; }
 .admin-review-return-form { display: grid; gap: 12px; margin-top: 18px; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: #fbfbfe; }
 .admin-review-return-form .field { min-width: 0; }
+
+
+/* Editorial version history and side-by-side comparison controls */
+.admin-version-history {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border, #d9deea);
+  border-radius: 1rem;
+  background: var(--surface-muted, #f8f9fc);
+}
+.admin-version-list {
+  display: grid;
+  gap: .55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-version-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .65rem;
+  padding: .65rem .8rem;
+  border: 1px solid var(--border, #d9deea);
+  border-radius: .7rem;
+  background: var(--surface, #fff);
+}
+.admin-version-list li strong { flex: 1 1 14rem; }
+.admin-version-list li small { color: var(--muted, #667085); }
+.admin-version-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+  align-items: start;
+}
+.admin-version-diff {
+  grid-column: 1 / -1;
+  padding: 1rem;
+  border-radius: .75rem;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d9deea);
+}
+.admin-version-diff ul { margin: .65rem 0 0; padding-left: 1.25rem; }
+.admin-version-diff li + li { margin-top: .35rem; }
+@media (max-width: 640px) {
+  .admin-version-compare { grid-template-columns: 1fr; }
+  .admin-version-diff { grid-column: 1; }
+}

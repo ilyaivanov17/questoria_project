@@ -58,6 +58,8 @@ type SourceLevel = {
   puzzles: SourcePuzzle[];
 };
 type SourceVersion = {
+  id: string;
+  updatedAt: string;
   versionNo: number;
   status: string;
   locale: string;
