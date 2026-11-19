@@ -1182,6 +1182,113 @@ export class AdminService {
     });
   }
 
+  async bulkAssignQuestReviewer(
+    actor: AuthenticatedUser,
+    questIds: string[],
+    reviewerId: string | null,
+  ): Promise<object> {
+    if (!canViewAllQuestVersions(actor)) {
+      throw new ForbiddenException('Only reviewers and administrators can assign quest reviewers.');
+    }
+    if (!Array.isArray(questIds) || questIds.length < 1 || questIds.length > 25) {
+      throw new BadRequestException('Select between 1 and 25 quests.');
+    }
+    if (new Set(questIds).size !== questIds.length) {
+      throw new BadRequestException('A quest can only be selected once.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const versions = await tx.questVersion.findMany({
+        where: { questId: { in: questIds }, status: 'REVIEW' },
+        select: {
+          id: true,
+          questId: true,
+          versionNo: true,
+          status: true,
+          authorId: true,
+          reviewerId: true,
+        },
+      });
+      const versionsByQuestId = new Map(versions.map((version) => [version.questId, version]));
+      if (versions.length !== questIds.length || versionsByQuestId.size !== questIds.length) {
+        throw new ConflictException('Each selected quest must have exactly one version in REVIEW state. Refresh the queue.');
+      }
+      const orderedVersions = questIds.map((questId) => versionsByQuestId.get(questId)!);
+
+      const reviewer = reviewerId
+        ? await tx.user.findFirst({
+          where: {
+            id: reviewerId,
+            status: 'ACTIVE',
+            roles: { some: { role: { key: { in: ['REVIEWER', 'ADMIN', 'SUPER_ADMIN'] } } } },
+          },
+          select: { id: true, emailNormalized: true, profile: { select: { nickname: true } } },
+        })
+        : null;
+      if (reviewerId && !reviewer) {
+        throw new BadRequestException('Choose an active user with a reviewer or administrator role.');
+      }
+
+      if (reviewer && orderedVersions.some((version) => version.authorId === reviewer.id)) {
+        throw new ConflictException(
+          'The assigned reviewer is the author of one or more selected quests. Remove those quests from the selection.',
+        );
+      }
+
+      const changedVersions = orderedVersions.filter((version) => version.reviewerId !== reviewerId);
+      for (const version of changedVersions) {
+        const updated = await tx.questVersion.updateMany({
+          where: { id: version.id, status: 'REVIEW', reviewerId: version.reviewerId },
+          data: { reviewerId },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            'One or more selected quests changed while the bulk assignment was running. No assignments were applied; refresh the queue.',
+          );
+        }
+      }
+
+      for (const version of changedVersions) {
+        await this.audit(
+          tx,
+          actor.userId,
+          reviewerId ? 'quest.reviewer.bulk_assigned' : 'quest.reviewer.bulk_unassigned',
+          'QUEST',
+          version.questId,
+          {
+            versionId: version.id,
+            versionNo: version.versionNo,
+            reviewerId: version.reviewerId,
+          },
+          {
+            versionId: version.id,
+            versionNo: version.versionNo,
+            reviewerId,
+            reviewerEmail: reviewer?.emailNormalized ?? null,
+            source: 'bulk',
+          },
+        );
+      }
+
+      return {
+        changedCount: changedVersions.length,
+        unchangedCount: orderedVersions.length - changedVersions.length,
+        reviewer: reviewer ? {
+          id: reviewer.id,
+          email: reviewer.emailNormalized,
+          nickname: reviewer.profile?.nickname ?? null,
+        } : null,
+        items: orderedVersions.map((version) => ({
+          questId: version.questId,
+          versionId: version.id,
+          versionNo: version.versionNo,
+          reviewerId,
+          changed: version.reviewerId !== reviewerId,
+        })),
+      };
+    });
+  }
+
   async requestQuestChanges(user: AuthenticatedUser, id: string, feedback: string): Promise<object> {
     const comment = feedback.trim();
     if (comment.length < 10 || comment.length > 2000) {

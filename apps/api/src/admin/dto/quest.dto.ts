@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsIn,
   IsInt,
@@ -268,6 +269,20 @@ export class RequestQuestChangesDto {
 }
 
 export class AssignQuestReviewerDto {
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID()
+  reviewerId!: string | null;
+}
+
+
+export class BulkAssignQuestReviewerDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(25)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  questIds!: string[];
+
   @ValidateIf((_object, value) => value !== null)
   @IsUUID()
   reviewerId!: string | null;
